@@ -1,0 +1,17 @@
+{
+  "name": "Wengji Banqiao Copilot",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "forwardPorts": [3000],
+  "postCreateCommand": "npm install",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "files.exclude": {
+          "**/node_modules": true,
+          "**/.next": true
+        }
+      },
+      "extensions": ["dbaeumer.vscode-eslint"]
+    }
+  }
+}

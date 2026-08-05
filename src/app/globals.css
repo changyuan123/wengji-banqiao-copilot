@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+:root {
+  --wj-red: #8b0000;
+  --wj-red-deep: #5c0000;
+  --wj-red-bright: #b22222;
+  --wj-steam: #fff5f0;
+  --wj-ink: #1a120f;
+  --wj-muted: #6b5348;
+  --wj-card: #ffffff;
+  --wj-line: #eadcd4;
+  --wj-gold: #c45c26;
+  --font-display: var(--font-noto-serif), "Songti TC", "PingFang TC", serif;
+  --font-body: var(--font-noto-sans), "PingFang TC", "Microsoft JhengHei", sans-serif;
+}
+
+@theme inline {
+  --color-wj-red: var(--wj-red);
+  --color-wj-ink: var(--wj-ink);
+  --font-sans: var(--font-body);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  color: var(--wj-ink);
+  font-family: var(--font-body);
+  background:
+    radial-gradient(120% 80% at 50% -10%, #f7d4c4 0%, transparent 55%),
+    linear-gradient(180deg, #fff8f4 0%, #f3e6de 45%, #efe0d6 100%);
+  min-height: 100dvh;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes steam {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.7;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.anim-rise {
+  animation: rise-in 0.45s ease-out both;
+}
+
+.anim-steam {
+  animation: steam 2.4s ease-in-out infinite;
+}
+
+.anim-toast {
+  animation: toast-in 0.28s ease-out both;
+}
