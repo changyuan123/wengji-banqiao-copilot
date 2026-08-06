@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { scenarios, store, type ScenarioId } from "@/data/store";
+import { situationExamples, situationPlaceholder, store } from "@/data/store";
 import type { WeatherPayload } from "@/lib/weather";
 
 type GenState = "idle" | "loading" | "done" | "error";
 
 export function CopilotApp() {
   const [weather, setWeather] = useState<WeatherPayload | null>(null);
-  const [scenario, setScenario] = useState<ScenarioId>("cold_rain");
+  const [situation, setSituation] = useState("");
   const [copyText, setCopyText] = useState("");
   const [genState, setGenState] = useState<GenState>("idle");
   const [toast, setToast] = useState<string | null>(null);
@@ -64,13 +64,17 @@ export function CopilotApp() {
   }, []);
 
   async function handleGenerate() {
+    if (situation.trim().length < 4) {
+      showToast("請先輸入今日營業狀況，例如湯剩多少、鴨血偏多…");
+      return;
+    }
     setGenState("loading");
     setCopyText("");
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenario, weather }),
+        body: JSON.stringify({ situation: situation.trim(), weather }),
       });
       const data = (await res.json()) as { text?: string; error?: string };
       if (!res.ok || !data.text) throw new Error(data.error || "生成失敗");
@@ -196,28 +200,33 @@ export function CopilotApp() {
         </section>
 
         <section className="anim-rise" style={{ animationDelay: "80ms" }}>
-          <h2 className="mb-2 px-1 text-sm font-semibold text-[#1a120f]">今日營業目標</h2>
-          <div className="flex flex-col gap-2.5">
-            {scenarios.map((s) => {
-              const active = scenario === s.id;
-              return (
+          <h2 className="mb-1 px-1 text-sm font-semibold text-[#1a120f]">今日營業狀況</h2>
+          <p className="mb-2 px-1 text-xs leading-relaxed text-[#6b5348]">
+            老闆自己輸入今天的狀況，例如湯剩很多、鴨血偏多、空桌、想推外帶…AI 會依你的文字產出文案。
+          </p>
+          <div
+            className="rounded-2xl bg-white p-3 shadow-sm"
+            style={{ border: "1px solid var(--wj-line)" }}
+          >
+            <textarea
+              value={situation}
+              onChange={(e) => setSituation(e.target.value)}
+              placeholder={situationPlaceholder}
+              rows={5}
+              className="w-full resize-none bg-transparent text-[15px] leading-relaxed text-[#1a120f] outline-none placeholder:text-[#a89084]"
+            />
+            <div className="mt-2 flex flex-wrap gap-2">
+              {situationExamples.map((ex) => (
                 <button
-                  key={s.id}
+                  key={ex.label}
                   type="button"
-                  onClick={() => setScenario(s.id)}
-                  className="rounded-2xl px-4 py-3.5 text-left transition active:scale-[0.99]"
-                  style={{
-                    background: active ? "#fff5f0" : "#fff",
-                    border: active ? "2px solid #8B0000" : "1px solid var(--wj-line)",
-                    boxShadow: active ? "0 0 0 1px rgba(139,0,0,0.08)" : undefined,
-                  }}
+                  onClick={() => setSituation(ex.text)}
+                  className="rounded-lg border border-[#eadcd4] bg-[#fff8f4] px-2.5 py-1 text-[11px] font-medium text-[#8B0000]"
                 >
-                  <p className="text-[15px] font-bold text-[#1a120f]">{s.title}</p>
-                  <p className="mt-0.5 text-xs text-[#6b5348]">{s.blurb}</p>
-                  <p className="mt-1 text-xs font-medium text-[#8B0000]">主打：{s.focus}</p>
+                  範例：{ex.label}
                 </button>
-              );
-            })}
+              ))}
+            </div>
           </div>
         </section>
 
@@ -263,7 +272,9 @@ export function CopilotApp() {
               </div>
             </div>
             <pre className="max-h-[340px] overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-[#fff8f4] p-3 text-[13px] leading-relaxed text-[#1a120f]">
-              {genState === "loading" ? "AI 正在依板橋天氣與菜單撰寫…" : copyText}
+              {genState === "loading"
+                ? "AI 正在依你輸入的營業狀況與板橋天氣撰寫…"
+                : copyText}
             </pre>
           </section>
         )}

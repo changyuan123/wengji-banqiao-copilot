@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { type ScenarioId } from "@/data/store";
 import {
   buildSystemPrompt,
   buildUserPrompt,
@@ -12,15 +11,18 @@ import { simulateBanqiaoWeather } from "@/lib/weather";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-const SCENARIOS: ScenarioId[] = ["cold_rain", "weekday_offpeak", "late_takeaway"];
-
-function isScenario(v: unknown): v is ScenarioId {
-  return typeof v === "string" && (SCENARIOS as string[]).includes(v);
-}
-
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
-  const scenario = isScenario(body.scenario) ? body.scenario : "cold_rain";
+  const situation =
+    typeof body.situation === "string" ? body.situation.trim() : "";
+
+  if (situation.length < 4) {
+    return NextResponse.json(
+      { error: "請先輸入今日營業狀況或目標（至少幾個字）" },
+      { status: 400 },
+    );
+  }
+
   const weather: WeatherPayload =
     body.weather && typeof body.weather.tempC === "number"
       ? body.weather
@@ -28,7 +30,7 @@ export async function POST(request: Request) {
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    const text = sanitizeCopy(templateCopy(scenario, weather), scenario);
+    const text = sanitizeCopy(templateCopy(situation, weather));
     return NextResponse.json({ text, source: "template", reason: "missing_api_key" });
   }
 
@@ -48,7 +50,7 @@ export async function POST(request: Request) {
         max_tokens: 700,
         messages: [
           { role: "system", content: buildSystemPrompt() },
-          { role: "user", content: buildUserPrompt(scenario, weather) },
+          { role: "user", content: buildUserPrompt(situation, weather) },
         ],
       }),
       signal: controller.signal,
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
     clearTimeout(timer);
 
     if (!res.ok) {
-      const text = sanitizeCopy(templateCopy(scenario, weather), scenario);
+      const text = sanitizeCopy(templateCopy(situation, weather));
       return NextResponse.json({
         text,
         source: "template",
@@ -69,16 +71,16 @@ export async function POST(request: Request) {
     };
     const raw = data.choices?.[0]?.message?.content?.trim();
     if (!raw) {
-      const text = sanitizeCopy(templateCopy(scenario, weather), scenario);
+      const text = sanitizeCopy(templateCopy(situation, weather));
       return NextResponse.json({ text, source: "template", reason: "empty_completion" });
     }
 
     return NextResponse.json({
-      text: sanitizeCopy(raw, scenario),
+      text: sanitizeCopy(raw),
       source: "openai",
     });
   } catch {
-    const text = sanitizeCopy(templateCopy(scenario, weather), scenario);
+    const text = sanitizeCopy(templateCopy(situation, weather));
     return NextResponse.json({ text, source: "template", reason: "timeout_or_error" });
   }
 }

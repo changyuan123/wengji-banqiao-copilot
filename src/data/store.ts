@@ -30,30 +30,21 @@ export const store = {
   },
 } as const;
 
-export type ScenarioId = "cold_rain" | "weekday_offpeak" | "late_takeaway";
+/** 輸入框範例：點一下可帶入，方便店長快速修改 */
+export const situationExamples = [
+  {
+    label: "湯底偏多",
+    text: "今天麻辣湯底還很多、白湯也剩不少，想推雙人套餐把湯消化掉，平日晚上空桌有點多。",
+  },
+  {
+    label: "鴨血／大腸",
+    text: "招牌滷鴨血與滷大腸備料偏多，想限時加贈吸引篤行路附近客人進來，主推888雙人鴛鴦。",
+  },
+  {
+    label: "外帶清料",
+    text: "內用偏淡，想主打外帶湯底與食材，強調免服務費、打包回家煮麵也很讚。",
+  },
+] as const;
 
-export const scenarios: {
-  id: ScenarioId;
-  title: string;
-  blurb: string;
-  focus: string;
-}[] = [
-  {
-    id: "cold_rain",
-    title: "冷雨夜衝桌",
-    blurb: "天氣轉冷或下雨時，主打暖胃與限時避寒優惠",
-    focus: "$888 雙人鴛鴦套餐",
-  },
-  {
-    id: "weekday_offpeak",
-    title: "平日離峰補位",
-    blurb: "平日空桌時段，用加贈招牌品項拉客進店",
-    focus: "免費招牌鴨血／滷臭豆腐",
-  },
-  {
-    id: "late_takeaway",
-    title: "深夜／外帶湯底",
-    blurb: "晚間與外帶客群，強調打包回家與免服務費",
-    focus: "外帶湯底＋免服務費",
-  },
-];
+export const situationPlaceholder = `例如：
+今天麻辣湯剩很多、鴨血也偏多，平日晚上空桌，想推888雙人套餐並加贈鴨血…`;

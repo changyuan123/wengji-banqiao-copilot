@@ -24,8 +24,8 @@ npm run dev
 ## 功能（MVP）
 
 - 板橋即時天氣（Open-Meteo；失敗則氣候模擬）
-- 三種情境：冷雨夜衝桌／平日離峰／深夜外帶
-- OpenAI `gpt-4o-mini` 文案（無 Key 或逾時則模板 fallback）
+- 老闆自行輸入「今日營業狀況」（湯／鴨血／空桌／外帶等），AI 依文字分析後產出文案
+- OpenAI `gpt-4o-mini` 文案（無 Key 或逾時則依輸入關鍵字模板 fallback）
 - 一鍵複製、LINE 分享
 - 綠界信用卡**定期定額** NT$999／月
 
