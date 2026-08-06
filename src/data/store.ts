@@ -33,6 +33,10 @@ export const store = {
 /** 輸入框範例：點一下可帶入，方便店長快速修改 */
 export const situationExamples = [
   {
+    label: "雞肉＋豆皮",
+    text: "今天雞肉和豆皮剩很多，想清料，請依菜單設計限時優惠組合把這兩樣推出去。",
+  },
+  {
     label: "湯底偏多",
     text: "今天麻辣湯底還很多、白湯也剩不少，想推雙人套餐把湯消化掉，平日晚上空桌有點多。",
   },
@@ -47,4 +51,4 @@ export const situationExamples = [
 ] as const;
 
 export const situationPlaceholder = `例如：
-今天麻辣湯剩很多、鴨血也偏多，平日晚上空桌，想推888雙人套餐並加贈鴨血…`;
+今天雞肉和豆皮剩很多，想清料，幫我依菜單設計優惠組合…`;

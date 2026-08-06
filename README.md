@@ -24,8 +24,8 @@ npm run dev
 ## 功能（MVP）
 
 - 板橋即時天氣（Open-Meteo；失敗則氣候模擬）
-- 老闆自行輸入「今日營業狀況」（湯／鴨血／空桌／外帶等），AI 依文字分析後產出文案
-- OpenAI `gpt-4o-mini` 文案（無 Key 或逾時則依輸入關鍵字模板 fallback）
+- 老闆自行輸入「今日營業狀況」（湯／鴨血／雞肉／豆皮／空桌／外帶等），系統對照完整菜單後產出清料優惠文案
+- AI 免費優先：`GROQ_API_KEY`（Llama）→ `GEMINI_API_KEY` → `OPENAI_API_KEY`；都沒有則走智能菜單模板（仍會點名你輸入的品項）
 - 一鍵複製、LINE 分享
 - 綠界信用卡**定期定額** NT$999／月
 
@@ -35,7 +35,9 @@ npm run dev
 
 | 變數 | 說明 |
 |------|------|
-| `OPENAI_API_KEY` | OpenAI |
+| `GROQ_API_KEY` | **建議先填**，Groq 免費額度即可寫文案 |
+| `GEMINI_API_KEY` | Google AI Studio 免費 Key（Groq 備援） |
+| `OPENAI_API_KEY` | 可選 |
 | `ECPAY_MERCHANT_ID` | 綠界特店代號 |
 | `ECPAY_HASH_KEY` | 綠界 HashKey |
 | `ECPAY_HASH_IV` | 綠界 HashIV |
@@ -58,9 +60,9 @@ https://vercel.com/new/import?s=https://github.com/changyuan123/wengji-banqiao-c
 2. Framework 選 Next.js（自動偵測）  
 3. 填入上方環境變數（至少先填 `SUBSCRIPTION_SECRET`、`NEXT_PUBLIC_SITE_URL`；OpenAI／綠界可後補）  
 4. Deploy → 把產生的 `*.vercel.app` 網址寫回 `NEXT_PUBLIC_SITE_URL` 再 Redeploy 一次  
-5. 用手機 Safari／Chrome 驗收：天氣、三情境生成、複製 toast、訂閱導向綠界 stage
+5. 用手機 Safari／Chrome 驗收：天氣、輸入「雞肉和豆皮剩很多」、生成文案是否點名清料優惠、複製 toast、訂閱導向綠界 stage
 
-未設定 `OPENAI_API_KEY` 時仍可用內建模板文案；未設定綠界變數時訂閱會顯示設定提示。
+未設定任何 AI Key 時，仍會用**菜單對應模板**產出（例如點到雞肉／豆皮會寫加贈清料優惠）；設定 `GROQ_API_KEY` 後即可免費智能寫文。未設定綠界變數時訂閱會顯示設定提示。
 
 ## 與營運情報站的關係
 
