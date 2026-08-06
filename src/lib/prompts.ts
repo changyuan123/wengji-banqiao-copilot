@@ -1,6 +1,9 @@
 import {
+  FORBIDDEN_CUSTOMER_PHRASES,
   brandFactsText,
   buildClearanceOffer,
+  buildCustomerHook,
+  buildCustomerLead,
   extractMentionedItems,
   menuCatalogText,
 } from "@/lib/menu";
@@ -9,21 +12,27 @@ import type { WeatherPayload } from "@/lib/weather";
 
 export function buildSystemPrompt() {
   return [
-    "你是台灣火鍋店的資深社群文案企劃，專為「翁記麻辣鍋－板橋店」撰寫 LINE 官方帳號與 Facebook／Instagram 宣傳文。",
-    "只寫繁體中文，語氣親切在地、有溫度，適度使用 emoji。",
-    "絕對禁止出現 [TODO]、[Insert]、placeholder、英文草稿、未完成括號提示。",
-    "店長會用口語描述今日營業狀況（例如：雞肉剩很多、豆皮偏多、湯太多、空桌）。你的任務是：",
-    "1) 辨識店長提到的菜單品項與目標（清料／補位／外帶等）",
-    "2) 只使用「完整菜單清單」裡的品項，設計合理的限時優惠組合（例如：點 $888 雙人套餐加贈豆皮／雞肉）",
-    "3) 文案要明確點出那些「剩很多」的品項，引導客人來消化備料",
-    "不要虛構店長沒說的庫存數字；把「偏多／剩很多」轉成限時優惠語氣即可。",
-    "文案必須自然提到：店名「翁記麻辣鍋」、地址「篤行路三段28號」。",
-    "結尾固定含店址與訂位電話。",
+    "你是台灣火鍋店的資深社群文案企劃，專為「翁記麻辣鍋－板橋店」撰寫 LINE／FB／IG 宣傳文。",
+    "只寫繁體中文，親切有溫度，適度 emoji。",
+    "絕對禁止 [TODO]、placeholder、英文草稿。",
     "",
-    "【品牌與門市資料】",
+    "【最重要：店長輸入是『內部備註』，不是給客人看的原文】",
+    "店長可能寫：要過期、剩很多、清料、賣不完……這些是內部資訊。",
+    "你必須改寫成『正面行銷』：限時特惠、今晚主打、數量有限、現點現涮、錯過可惜。",
+    "絕對禁止在文案出現：過期、快過期、到期、快壞、清料、剩很多、消化備料、庫存、報廢。",
+    "錯誤示範（禁止）：「今天店裡狀況：澳洲和牛要過期了」",
+    "正確示範：「今晚澳洲和牛限時特選，點 888 雙人套餐加點／升級享優惠，數量有限晚來售完！」",
+    "",
+    "任務：",
+    "1) 辨識店長提到的菜單品項",
+    "2) 依菜單設計合理優惠（加贈、加點特惠、約 8 折等，語氣誠懇）",
+    "3) 用正面話術推品項，製造今晚就來的急迫感，但不要恐嚇或暗示食安問題",
+    "文案必須含：翁記麻辣鍋、篤行路三段28號、店址與電話。",
+    "",
+    "【品牌與門市】",
     brandFactsText(),
     "",
-    "【完整菜單清單（只能用這些）】",
+    "【完整菜單】",
     menuCatalogText(),
   ].join("\n");
 }
@@ -36,46 +45,28 @@ export function buildUserPrompt(situation: string, weather: WeatherPayload) {
   const mentionedLine =
     mentioned.length > 0
       ? mentioned.map((m) => m.promoName).join("、")
-      : "（未精確對到品項，請依店長原文語意與菜單合理發揮）";
+      : "（未對到清單品項時，仍用正面限時暖胃話術，勿貼上店長原文）";
 
   return [
-    `今日天氣（可適當融入開場）：${weatherLine}`,
-    `店長今日營業狀況（原文）：\n${situation.trim()}`,
-    `系統已對到的菜單品項：${mentionedLine}`,
-    "請輸出一篇可直接貼上的完整文案（約 180–320 字），必須包含：標題、依清料／目標設計的優惠組合、行動呼籲、地址與電話。不要前言、不要解釋分析過程。",
+    `今日天氣（可融入開場）：${weatherLine}`,
+    `店長內部備註（禁止原句貼給客人）：\n${situation.trim()}`,
+    `已對到菜單品項：${mentionedLine}`,
+    "請輸出可直接貼上的完整行銷文案（180–320 字）：標題、正面限時優惠、行動呼籲、地址電話。不要分析過程、不要複述內部備註。",
   ].join("\n\n");
 }
 
-/** 無 AI 時：依菜單對應組清料文案（比單純關鍵字聰明） */
+/** 無 AI 時：正面行銷模板（絕不貼店長原文） */
 export function templateCopy(situation: string, weather: WeatherPayload): string {
-  const temp = weather.tempC;
-  const desc = weather.description;
   const addr = `${store.address}（${store.addressHint}）`;
   const phone = store.phone;
-  const s = situation.trim();
-  const items = extractMentionedItems(s);
-  const clearable = items.filter((i) => i.role !== "perk" && i.role !== "combo");
-  const offer = buildClearanceOffer(items);
-  const takeaway = /外帶|打包|帶走/.test(s);
-
-  const itemHook =
-    clearable.length > 0
-      ? clearable.map((i) => i.promoName).join("＋")
-      : "今日現況";
-
-  const hook = takeaway
-    ? `【外帶清料｜翁記麻辣鍋板橋店】`
-    : `【板橋 ${temp}°C ${desc}｜今日限時：${itemHook}】`;
-
-  const bodyFocus =
-    clearable.length > 0
-      ? `今天「${clearable.map((i) => i.name).join("、")}」備料偏多，誠摯邀請篤行路的朋友來幫忙暖胃清料！`
-      : `今天店裡狀況：${s}`;
+  const items = extractMentionedItems(situation);
+  const offer = buildClearanceOffer(items, situation);
+  const hook = buildCustomerHook(items, weather.tempC, weather.description);
+  const lead = buildCustomerLead(items);
 
   return `${hook}
 
-板橋篤行路的朋友們！
-${bodyFocus}
+${lead}
 
 翁記麻辣鍋為您準備好長時間熬煮、溫潤可直接喝的招牌牛骨中藥麻辣湯底 🔥
 
@@ -85,7 +76,7 @@ ${offer}
 
 📍 店址：${addr}
 ☎️ 訂位/外帶專線：${phone}
-即刻出發，好料不等人！`;
+今晚就出發，好料限量、手慢沒有！`;
 }
 
 export function sanitizeCopy(text: string, situation?: string): string {
@@ -94,6 +85,21 @@ export function sanitizeCopy(text: string, situation?: string): string {
     .replace(/\[Insert[^\]]*\]/gi, "")
     .replace(/\[.*?placeholder.*?\]/gi, "")
     .trim();
+
+  // 若 AI／模板仍漏出內部用語，強制改寫／刪除
+  for (const bad of FORBIDDEN_CUSTOMER_PHRASES) {
+    if (out.includes(bad)) {
+      out = out
+        .split("\n")
+        .filter((line) => !line.includes(bad))
+        .join("\n");
+      out = out.replaceAll(bad, "限時特選");
+    }
+  }
+
+  // 禁止「今天店裡狀況：…」這類把內部備註貼上的句型
+  out = out.replace(/^.*今天店裡狀況[:：].*$/gm, "").trim();
+  out = out.replace(/^.*店長.*備註.*$/gm, "").trim();
 
   if (!out.includes("翁記麻辣鍋")) {
     out = `翁記麻辣鍋提醒您——\n${out}`;
@@ -111,7 +117,7 @@ export function sanitizeCopy(text: string, situation?: string): string {
         out.includes(t),
       );
       if (!present) {
-        out += `\n今日主打加贈／加點：${item.promoName}`;
+        out += `\n今晚主打加點：${item.promoName}（限時特惠）`;
       }
     }
   }
@@ -123,5 +129,5 @@ export function sanitizeCopy(text: string, situation?: string): string {
     out += `\n☎️ ${store.phone}`;
   }
 
-  return out.trim();
+  return out.replace(/\n{3,}/g, "\n\n").trim();
 }
