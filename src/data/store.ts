@@ -30,30 +30,35 @@ export const store = {
   },
 } as const;
 
+/** 快速填入範例（可點選帶入，老闆仍可自行改寫） */
 export type ScenarioId = "cold_rain" | "weekday_offpeak" | "late_takeaway";
 
 export const scenarios: {
   id: ScenarioId;
   title: string;
-  blurb: string;
+  status: string;
+  goal: string;
   focus: string;
 }[] = [
   {
     id: "cold_rain",
     title: "冷雨夜衝桌",
-    blurb: "天氣轉冷或下雨時，主打暖胃與限時避寒優惠",
+    status: "今晚天氣轉冷／下雨，內用桌數偏少，客人猶豫要不要出門",
+    goal: "用限時避寒優惠衝今晚內用桌數，主打 $888 雙人鴛鴦套餐加贈招牌滷鴨血或滷臭豆腐",
     focus: "$888 雙人鴛鴦套餐",
   },
   {
     id: "weekday_offpeak",
     title: "平日離峰補位",
-    blurb: "平日空桌時段，用加贈招牌品項拉客進店",
+    status: "平日離峰時段空桌偏多，附近居民與上班族還沒被喚來",
+    goal: "平日離峰補位，加贈招牌鴨血／滷臭豆腐，把空桌變成熱桌",
     focus: "免費招牌鴨血／滷臭豆腐",
   },
   {
     id: "late_takeaway",
     title: "深夜／外帶湯底",
-    blurb: "晚間與外帶客群，強調打包回家與免服務費",
+    status: "晚間與深夜內用偏淡，加班晚歸客較多、想快速帶走",
+    goal: "主推外帶湯底與打包食材，強調免服務費、回家也能暖胃",
     focus: "外帶湯底＋免服務費",
   },
 ];
