@@ -19,7 +19,7 @@ const serif = Noto_Serif_TC({
 
 export const metadata: Metadata = {
   title: store.title,
-  description: `${store.fullName}專屬 AI 爆客助手：依板橋天氣一鍵產生 LINE／社群文案`,
+  description: `${store.fullName}專屬 AI 爆客助手：依板橋天氣與今日營業目標一鍵產生 LINE／社群文案`,
 };
 
 export const viewport: Viewport = {

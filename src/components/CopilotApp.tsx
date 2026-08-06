@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { scenarios, store, type ScenarioId } from "@/data/store";
+import { briefPresets, store } from "@/data/store";
 import type { WeatherPayload } from "@/lib/weather";
 
 type GenState = "idle" | "loading" | "done" | "error";
 
 export function CopilotApp() {
   const [weather, setWeather] = useState<WeatherPayload | null>(null);
-  const [scenario, setScenario] = useState<ScenarioId>("cold_rain");
+  const [situation, setSituation] = useState("");
+  const [goal, setGoal] = useState("");
+  const [activePreset, setActivePreset] = useState<string | null>(null);
   const [copyText, setCopyText] = useState("");
   const [genState, setGenState] = useState<GenState>("idle");
   const [toast, setToast] = useState<string | null>(null);
@@ -16,6 +18,8 @@ export function CopilotApp() {
   const [payBusy, setPayBusy] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [paidBanner, setPaidBanner] = useState<string | null>(null);
+
+  const canGenerate = situation.trim().length > 0 && goal.trim().length > 0;
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -63,14 +67,30 @@ export function CopilotApp() {
     }
   }, []);
 
+  function applyPreset(id: string) {
+    const preset = briefPresets.find((p) => p.id === id);
+    if (!preset) return;
+    setSituation(preset.situation);
+    setGoal(preset.goal);
+    setActivePreset(id);
+  }
+
   async function handleGenerate() {
+    if (!canGenerate) {
+      showToast("請先填寫今日營業狀況與營業目標");
+      return;
+    }
     setGenState("loading");
     setCopyText("");
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenario, weather }),
+        body: JSON.stringify({
+          situation: situation.trim(),
+          goal: goal.trim(),
+          weather,
+        }),
       });
       const data = (await res.json()) as { text?: string; error?: string };
       if (!res.ok || !data.text) throw new Error(data.error || "生成失敗");
@@ -141,6 +161,9 @@ export function CopilotApp() {
     ? `${weather.district}：${weather.tempC}°C，${weather.description}`
     : "讀取板橋天氣中…";
 
+  const fieldClass =
+    "mt-1.5 w-full resize-none rounded-xl border border-[#eadcd4] bg-[#fff8f4] px-3 py-2.5 text-sm leading-relaxed text-[#1a120f] outline-none transition placeholder:text-[#a89084] focus:border-[#8B0000] focus:ring-2 focus:ring-[#8B0000]/15";
+
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col pb-28">
       <header
@@ -196,36 +219,79 @@ export function CopilotApp() {
         </section>
 
         <section className="anim-rise" style={{ animationDelay: "80ms" }}>
-          <h2 className="mb-2 px-1 text-sm font-semibold text-[#1a120f]">今日營業目標</h2>
-          <div className="flex flex-col gap-2.5">
-            {scenarios.map((s) => {
-              const active = scenario === s.id;
+          <h2 className="mb-2 px-1 text-sm font-semibold text-[#1a120f]">今日營業輸入</h2>
+          <p className="mb-2.5 px-1 text-xs leading-relaxed text-[#6b5348]">
+            請老闆自行填寫今天的營業狀況與目標，再一鍵生成 LINE 社群文案。也可先點下方範例帶入後再修改。
+          </p>
+
+          <div className="mb-3 flex flex-wrap gap-2 px-0.5">
+            {briefPresets.map((p) => {
+              const active = activePreset === p.id;
               return (
                 <button
-                  key={s.id}
+                  key={p.id}
                   type="button"
-                  onClick={() => setScenario(s.id)}
-                  className="rounded-2xl px-4 py-3.5 text-left transition active:scale-[0.99]"
+                  onClick={() => applyPreset(p.id)}
+                  className="rounded-lg px-2.5 py-1.5 text-xs font-medium transition active:scale-[0.98]"
                   style={{
                     background: active ? "#fff5f0" : "#fff",
-                    border: active ? "2px solid #8B0000" : "1px solid var(--wj-line)",
-                    boxShadow: active ? "0 0 0 1px rgba(139,0,0,0.08)" : undefined,
+                    border: active ? "1.5px solid #8B0000" : "1px solid var(--wj-line)",
+                    color: active ? "#8B0000" : "#6b5348",
                   }}
                 >
-                  <p className="text-[15px] font-bold text-[#1a120f]">{s.title}</p>
-                  <p className="mt-0.5 text-xs text-[#6b5348]">{s.blurb}</p>
-                  <p className="mt-1 text-xs font-medium text-[#8B0000]">主打：{s.focus}</p>
+                  {p.label}
                 </button>
               );
             })}
+          </div>
+
+          <div
+            className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm"
+            style={{ border: "1px solid var(--wj-line)" }}
+          >
+            <label className="block">
+              <span className="text-sm font-semibold text-[#1a120f]">今日營業狀況</span>
+              <span className="mt-0.5 block text-[11px] text-[#6b5348]">
+                例如：平日中午偏空、今晚下雨客少、附近有活動…
+              </span>
+              <textarea
+                value={situation}
+                onChange={(e) => {
+                  setSituation(e.target.value);
+                  setActivePreset(null);
+                }}
+                rows={3}
+                maxLength={500}
+                placeholder="描述今天店裡實際狀況…"
+                className={fieldClass}
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-[#1a120f]">今日營業目標</span>
+              <span className="mt-0.5 block text-[11px] text-[#6b5348]">
+                例如：衝 $888 雙人套餐、補滿離峰空桌、主打外帶湯底…
+              </span>
+              <textarea
+                value={goal}
+                onChange={(e) => {
+                  setGoal(e.target.value);
+                  setActivePreset(null);
+                }}
+                rows={3}
+                maxLength={500}
+                placeholder="今天想達成的行銷／營業目標…"
+                className={fieldClass}
+              />
+            </label>
           </div>
         </section>
 
         <button
           type="button"
           onClick={handleGenerate}
-          disabled={genState === "loading"}
-          className="anim-rise rounded-2xl px-4 py-4 text-[15px] font-bold text-white shadow-md transition active:scale-[0.98] disabled:opacity-70"
+          disabled={genState === "loading" || !canGenerate}
+          className="anim-rise rounded-2xl px-4 py-4 text-[15px] font-bold text-white shadow-md transition active:scale-[0.98] disabled:opacity-50"
           style={{
             background: "linear-gradient(180deg, #b22222 0%, #8B0000 100%)",
             animationDelay: "120ms",
@@ -235,6 +301,12 @@ export function CopilotApp() {
             ? "產生中…（約 30 秒內完成）"
             : "🚀 一鍵生成今日爆客 LINE / 社群文案"}
         </button>
+
+        {!canGenerate && (
+          <p className="-mt-2 px-1 text-center text-[11px] text-[#6b5348]">
+            請先填寫營業狀況與營業目標後再生成
+          </p>
+        )}
 
         {(copyText || genState === "loading") && (
           <section
@@ -263,7 +335,9 @@ export function CopilotApp() {
               </div>
             </div>
             <pre className="max-h-[340px] overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-[#fff8f4] p-3 text-[13px] leading-relaxed text-[#1a120f]">
-              {genState === "loading" ? "AI 正在依板橋天氣與菜單撰寫…" : copyText}
+              {genState === "loading"
+                ? "AI 正在依板橋天氣與您輸入的營業狀況／目標撰寫…"
+                : copyText}
             </pre>
           </section>
         )}
@@ -310,12 +384,12 @@ export function CopilotApp() {
               訂閱翁記專屬 AI 助手
             </h3>
             <p className="mt-2 text-sm leading-relaxed text-[#6b5348]">
-              每月 NT${store.subscriptionPrice}（綠界信用卡定期定額）。天天依板橋天氣產出爆客文案，
+              每月 NT${store.subscriptionPrice}（綠界信用卡定期定額）。依板橋天氣與老闆今日目標產出爆客文案，
               多賣一桌雙人套餐即完全回本。
             </p>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#1a120f]">
               <li>板橋即時天氣連動文案</li>
-              <li>三種營業目標一鍵產出</li>
+              <li>老闆自填營業狀況／目標一鍵產出</li>
               <li>可直接貼 LINE OA／FB</li>
             </ul>
             <div className="mt-5 flex gap-2">
