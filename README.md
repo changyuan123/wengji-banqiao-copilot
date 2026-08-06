@@ -1,6 +1,6 @@
 # 翁記麻辣鍋板橋店｜AI 爆客行銷助手
 
-專為 **翁記麻辣鍋－板橋店**（新北市板橋區篤行路三段 28 號）打造的單店 AI 行銷助手：讀板橋天氣 → 選營業目標 → 一鍵產出 LINE／社群文案。
+專為 **翁記麻辣鍋－板橋店**（新北市板橋區篤行路三段 28 號）打造的單店 AI 行銷助手：讀板橋天氣 → 老闆輸入今日營業狀況與目標 → 一鍵產出 LINE／社群文案。
 
 **Repo：** https://github.com/changyuan123/wengji-banqiao-copilot
 
@@ -24,7 +24,7 @@ npm run dev
 ## 功能（MVP）
 
 - 板橋即時天氣（Open-Meteo；失敗則氣候模擬）
-- 三種情境：冷雨夜衝桌／平日離峰／深夜外帶
+- 老闆自訂「今日營業狀況」與「今日營業目標」（可選快速範例帶入後再改）
 - OpenAI `gpt-4o-mini` 文案（無 Key 或逾時則模板 fallback）
 - 一鍵複製、LINE 分享
 - 綠界信用卡**定期定額** NT$999／月
@@ -58,7 +58,7 @@ https://vercel.com/new/import?s=https://github.com/changyuan123/wengji-banqiao-c
 2. Framework 選 Next.js（自動偵測）  
 3. 填入上方環境變數（至少先填 `SUBSCRIPTION_SECRET`、`NEXT_PUBLIC_SITE_URL`；OpenAI／綠界可後補）  
 4. Deploy → 把產生的 `*.vercel.app` 網址寫回 `NEXT_PUBLIC_SITE_URL` 再 Redeploy 一次  
-5. 用手機 Safari／Chrome 驗收：天氣、三情境生成、複製 toast、訂閱導向綠界 stage
+5. 用手機 Safari／Chrome 驗收：天氣、自訂店況／目標生成、複製 toast、訂閱導向綠界 stage
 
 未設定 `OPENAI_API_KEY` 時仍可用內建模板文案；未設定綠界變數時訂閱會顯示設定提示。
 
