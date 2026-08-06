@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { type ScenarioId } from "@/data/store";
+import type { BossBrief } from "@/data/store";
 import {
   buildSystemPrompt,
   buildUserPrompt,
@@ -12,23 +12,41 @@ import { simulateBanqiaoWeather } from "@/lib/weather";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-const SCENARIOS: ScenarioId[] = ["cold_rain", "weekday_offpeak", "late_takeaway"];
+const MAX_LEN = 500;
 
-function isScenario(v: unknown): v is ScenarioId {
-  return typeof v === "string" && (SCENARIOS as string[]).includes(v);
+function cleanText(v: unknown): string {
+  if (typeof v !== "string") return "";
+  return v.replace(/\r\n/g, "\n").trim().slice(0, MAX_LEN);
+}
+
+function parseBrief(body: Record<string, unknown>): BossBrief | null {
+  const situation = cleanText(body.situation);
+  const goal = cleanText(body.goal);
+  if (!situation || !goal) return null;
+  return { situation, goal };
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({}));
-  const scenario = isScenario(body.scenario) ? body.scenario : "cold_rain";
+  const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const brief = parseBrief(body);
+  if (!brief) {
+    return NextResponse.json(
+      { error: "請填寫今日營業狀況與營業目標" },
+      { status: 400 },
+    );
+  }
+
   const weather: WeatherPayload =
-    body.weather && typeof body.weather.tempC === "number"
-      ? body.weather
+    body.weather &&
+    typeof body.weather === "object" &&
+    body.weather !== null &&
+    typeof (body.weather as WeatherPayload).tempC === "number"
+      ? (body.weather as WeatherPayload)
       : simulateBanqiaoWeather();
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    const text = sanitizeCopy(templateCopy(scenario, weather), scenario);
+    const text = sanitizeCopy(templateCopy(brief, weather));
     return NextResponse.json({ text, source: "template", reason: "missing_api_key" });
   }
 
@@ -48,7 +66,7 @@ export async function POST(request: Request) {
         max_tokens: 700,
         messages: [
           { role: "system", content: buildSystemPrompt() },
-          { role: "user", content: buildUserPrompt(scenario, weather) },
+          { role: "user", content: buildUserPrompt(brief, weather) },
         ],
       }),
       signal: controller.signal,
@@ -56,7 +74,7 @@ export async function POST(request: Request) {
     clearTimeout(timer);
 
     if (!res.ok) {
-      const text = sanitizeCopy(templateCopy(scenario, weather), scenario);
+      const text = sanitizeCopy(templateCopy(brief, weather));
       return NextResponse.json({
         text,
         source: "template",
@@ -69,16 +87,16 @@ export async function POST(request: Request) {
     };
     const raw = data.choices?.[0]?.message?.content?.trim();
     if (!raw) {
-      const text = sanitizeCopy(templateCopy(scenario, weather), scenario);
+      const text = sanitizeCopy(templateCopy(brief, weather));
       return NextResponse.json({ text, source: "template", reason: "empty_completion" });
     }
 
     return NextResponse.json({
-      text: sanitizeCopy(raw, scenario),
+      text: sanitizeCopy(raw),
       source: "openai",
     });
   } catch {
-    const text = sanitizeCopy(templateCopy(scenario, weather), scenario);
+    const text = sanitizeCopy(templateCopy(brief, weather));
     return NextResponse.json({ text, source: "template", reason: "timeout_or_error" });
   }
 }
