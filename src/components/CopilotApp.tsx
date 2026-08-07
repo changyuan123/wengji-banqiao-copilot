@@ -5,12 +5,15 @@ import { situationExamples, situationPlaceholder, store } from "@/data/store";
 import type { WeatherPayload } from "@/lib/weather";
 
 type GenState = "idle" | "loading" | "done" | "error";
+type Candidate = { id: string; name: string; promoName: string };
 
 export function CopilotApp() {
   const [weather, setWeather] = useState<WeatherPayload | null>(null);
   const [situation, setSituation] = useState("");
   const [copyText, setCopyText] = useState("");
   const [genState, setGenState] = useState<GenState>("idle");
+  const [matchedLabel, setMatchedLabel] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [payBusy, setPayBusy] = useState(false);
@@ -71,27 +74,53 @@ export function CopilotApp() {
     }
   }, []);
 
-  async function handleGenerate() {
-    if (situation.trim().length < 4) {
-      showToast("請先輸入今日營業狀況，例如湯剩多少、鴨血偏多…");
+  async function handleGenerate(overrideSituation?: string) {
+    const note = (overrideSituation ?? situation).trim();
+    if (note.length < 2) {
+      showToast("請輸入今天要推的品項，例如：空心菜要過期了");
       return;
     }
     setGenState("loading");
     setCopyText("");
+    setMatchedLabel(null);
+    setCandidates([]);
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ situation: situation.trim(), weather }),
+        body: JSON.stringify({ situation: note, weather }),
       });
-      const data = (await res.json()) as { text?: string; error?: string };
+      const data = (await res.json()) as {
+        text?: string;
+        error?: string;
+        needItem?: boolean;
+        candidates?: Candidate[];
+        matched?: { name: string }[];
+      };
+      if (res.status === 422 || data.needItem) {
+        setCandidates(data.candidates ?? []);
+        setGenState("idle");
+        showToast(data.error || "請點選下方品項");
+        return;
+      }
       if (!res.ok || !data.text) throw new Error(data.error || "生成失敗");
       setCopyText(data.text);
+      setMatchedLabel(
+        data.matched?.length
+          ? `已對到：${data.matched.map((m) => m.name).join("、")}（對客人只寫限時特價）`
+          : null,
+      );
       setGenState("done");
     } catch {
       setGenState("error");
       showToast("生成失敗，請再試一次");
     }
+  }
+
+  function pickCandidate(name: string) {
+    const next = `${name}要過期了，今晚限時特價`;
+    setSituation(next);
+    void handleGenerate(next);
   }
 
   async function handleCopy() {
@@ -241,9 +270,12 @@ export function CopilotApp() {
         </section>
 
         <section className="anim-rise" style={{ animationDelay: "80ms" }}>
-          <h2 className="mb-1 px-1 text-sm font-semibold text-[#1a120f]">今日營業狀況</h2>
+          <h2 className="mb-1 px-1 text-sm font-semibold text-[#1a120f]">
+            今日限時特價品（內部備註）
+          </h2>
           <p className="mb-2 px-1 text-xs leading-relaxed text-[#6b5348]">
-            老闆自己輸入今天的狀況，例如湯剩很多、鴨血偏多、空桌、想推外帶…AI 會依你的文字產出文案。
+            只填「哪樣要推／快到期」即可。系統會對到菜單並寫<strong className="font-semibold text-[#8B0000]">限時特價</strong>
+            ，不會跟客人說即期或過期。產生後可一鍵推播 LINE OA。
           </p>
           <div
             className="rounded-2xl bg-white p-3 shadow-sm"
@@ -251,9 +283,12 @@ export function CopilotApp() {
           >
             <textarea
               value={situation}
-              onChange={(e) => setSituation(e.target.value)}
+              onChange={(e) => {
+                setSituation(e.target.value);
+                setCandidates([]);
+              }}
               placeholder={situationPlaceholder}
-              rows={5}
+              rows={4}
               className="w-full resize-none bg-transparent text-[15px] leading-relaxed text-[#1a120f] outline-none placeholder:text-[#a89084]"
             />
             <div className="mt-2 flex flex-wrap gap-2">
@@ -261,19 +296,39 @@ export function CopilotApp() {
                 <button
                   key={ex.label}
                   type="button"
-                  onClick={() => setSituation(ex.text)}
+                  onClick={() => {
+                    setSituation(ex.text);
+                    setCandidates([]);
+                  }}
                   className="rounded-lg border border-[#eadcd4] bg-[#fff8f4] px-2.5 py-1 text-[11px] font-medium text-[#8B0000]"
                 >
                   範例：{ex.label}
                 </button>
               ))}
             </div>
+            {candidates.length > 0 && (
+              <div className="mt-3 border-t border-[#eadcd4] pt-3">
+                <p className="mb-2 text-[11px] text-[#6b5348]">認不出品項，請點選要推的：</p>
+                <div className="flex flex-wrap gap-2">
+                  {candidates.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => pickCandidate(c.name)}
+                      className="rounded-lg bg-[#8B0000] px-2.5 py-1.5 text-[11px] font-semibold text-white"
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
         <button
           type="button"
-          onClick={handleGenerate}
+          onClick={() => handleGenerate()}
           disabled={genState === "loading"}
           className="anim-rise rounded-2xl px-4 py-4 text-[15px] font-bold text-white shadow-md transition active:scale-[0.98] disabled:opacity-70"
           style={{
@@ -283,7 +338,7 @@ export function CopilotApp() {
         >
           {genState === "loading"
             ? "產生中…（約 30 秒內完成）"
-            : "🚀 一鍵生成今日爆客 LINE / 社群文案"}
+            : "產生限時特價文案"}
         </button>
 
         {(copyText || genState === "loading") && (
@@ -291,8 +346,11 @@ export function CopilotApp() {
             className="relative rounded-2xl bg-white p-4 shadow-sm anim-rise"
             style={{ border: "1px solid var(--wj-line)" }}
           >
+            {matchedLabel && (
+              <p className="mb-2 text-[11px] text-[#6b5348]">{matchedLabel}</p>
+            )}
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold">今日文案預覽（精簡版）</h2>
+              <h2 className="text-sm font-semibold">特價文案預覽 → 可廣播</h2>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -422,9 +480,9 @@ export function CopilotApp() {
               多賣一桌雙人套餐即完全回本。
             </p>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#1a120f]">
-              <li>板橋天氣＋今日營業狀況產出短文案</li>
+              <li>即期品對客人只寫限時特價，不說過期</li>
               <li>一鍵複製／推播 LINE 官方帳號</li>
-              <li>依菜單主打限時優惠，不嚇跑客人</li>
+              <li>模糊對菜單（口語／錯字也能對）</li>
             </ul>
             <div className="mt-5 flex gap-2">
               <button
