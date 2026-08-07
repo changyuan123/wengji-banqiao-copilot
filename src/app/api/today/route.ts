@@ -44,8 +44,8 @@ export async function GET(request: Request) {
 /** 店家發布今日特價（免費網頁通道，不用 LINE） */
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
-  const itemIds = Array.isArray(body.itemIds)
-    ? body.itemIds.filter((x: unknown) => typeof x === "string")
+  const itemIds: string[] = Array.isArray(body.itemIds)
+    ? body.itemIds.filter((x: unknown): x is string => typeof x === "string")
     : [];
   const note = typeof body.note === "string" ? body.note.trim().slice(0, 80) : "";
 
