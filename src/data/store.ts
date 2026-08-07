@@ -39,6 +39,10 @@ export const situationExamples = [
     text: "水璉要過期了 今天要下大雨",
   },
   {
+    label: "三記蝦餃",
+    text: "三記蝦餃要過期了，想推限時特價",
+  },
+  {
     label: "羊肉",
     text: "羊肉要過期了，想推限時特價",
   },
@@ -49,10 +53,6 @@ export const situationExamples = [
   {
     label: "鴨血",
     text: "招牌鴨血快過期，要打折推",
-  },
-  {
-    label: "大腸頭",
-    text: "大腸頭沒人點，備料偏多",
   },
 ] as const;
 
