@@ -130,10 +130,14 @@ export function sanitizeCopy(text: string, situation?: string): string {
     }
     if (/羊肉|羊/.test(situation) && !/和牛|澳洲/.test(situation)) {
       out = out
-        .split(/[，。！\n]/)
-        .filter((seg) => !/和牛|澳洲和牛/.test(seg) || /羊肉|羊/.test(seg))
-        .join("，")
-        .replace(/，{2,}/g, "，");
+        .split("\n")
+        .map((line) => {
+          if (!/和牛|澳洲和牛/.test(line)) return line;
+          if (/羊肉|羊/.test(line)) return line;
+          return "";
+        })
+        .filter(Boolean)
+        .join("\n");
     }
   }
 
