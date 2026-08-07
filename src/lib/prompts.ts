@@ -21,11 +21,12 @@ export function buildSystemPrompt() {
     "只寫繁體中文，親切，emoji 最多 3 個。",
     "絕對禁止 [TODO]、placeholder、簡體字、英文草稿。",
     "",
-    "【長度】80～140 字（不含空白）。超過就不合格。",
-    "結構：①標題（含品名）②特價一句 ③地址＋電話 ④一句 CTA。",
+    "【長度】選 1～2 樣約 80～140 字；選 3 樣可到 180 字（不含空白），仍須精簡。",
+    "結構：①標題（含全部已選品名）②特價一句（每個已選品都要有折扣）③地址＋電話 ④一句 CTA。",
     "",
     "【產品定位：惜食特價推播】",
-    "店長用系統點選今日要推到惜食群的品項。你只輸出給客人看的限時特價文案。",
+    "店長用系統點選今日要推到惜食群的品項（最多 3 樣）。你只輸出給客人看的限時特價文案。",
+    "店長選了幾樣，標題與特價句就必須出現幾樣，禁止只寫其中 2 樣。",
     "必須主打系統指定的品項，禁止改推其他肉品／單點。",
     "禁止預設「888雙人套餐」（鍋資：小$300／中$400／大$500）。",
     "",
@@ -46,33 +47,53 @@ export function buildSystemPrompt() {
   ].join("\n");
 }
 
-export function buildUserPrompt(situation: string, weather: WeatherPayload) {
+export function buildUserPrompt(
+  situation: string,
+  weather: WeatherPayload,
+  presetItems?: ReturnType<typeof promoItems>,
+) {
   const weatherLine = `${weather.district} ${weather.tempC}°C ${weather.description}`;
-  const resolved = resolvePromoItems(situation);
-  const mentioned = promoItems(resolved.items);
+  const mentioned = (
+    presetItems && presetItems.length > 0
+      ? promoItems(presetItems)
+      : promoItems(resolvePromoItems(situation).items)
+  ).slice(0, 3);
   const dealLines = mentioned
-    .slice(0, 2)
+    .slice(0, 3)
     .map((m) => discountPromoLabel(m))
     .join("、");
   const mentionedLine =
     mentioned.length > 0
-      ? `必須主打並寫出折扣：${dealLines}（不可改推其他品項；對客人禁止寫即期／過期）`
+      ? `必須主打並寫出折扣（共 ${Math.min(mentioned.length, 3)} 樣，缺一不可）：${dealLines}（不可改推其他品項；對客人禁止寫即期／過期）`
       : "（尚未對到品項——不應發生；若發生請只寫請店長重選品項）";
 
   const rainHint = /雨/.test(situation + weather.description)
     ? "店長或天氣提到雨：可加雨夜暖鍋鉤子。"
     : "天氣僅供氣氛，可不提。";
 
+  const lenHint =
+    mentioned.length >= 3
+      ? "只輸出一篇短文（約 120～180 字），直接可貼 LINE。三樣品名與特價都要出現。不要前言。"
+      : "只輸出一篇 80～140 字短文，直接可貼 LINE。不要前言。";
+
   return [
     `天氣：${weatherLine}。${rainHint}`,
     `店長內部備註（禁止原句給客人）：\n${situation.trim()}`,
     mentionedLine,
-    "只輸出一篇 80～140 字短文，直接可貼 LINE。不要前言。",
+    lenHint,
   ].join("\n\n");
 }
 
-export function templateCopy(situation: string, weather: WeatherPayload): string {
-  const { items } = resolvePromoItems(situation);
+export function templateCopy(
+  situation: string,
+  weather: WeatherPayload,
+  presetItems?: ReturnType<typeof promoItems>,
+): string {
+  const items = (
+    presetItems && presetItems.length > 0
+      ? promoItems(presetItems)
+      : resolvePromoItems(situation).items
+  ).slice(0, 3);
   const offer = buildClearanceOffer(items, situation);
   const hook = buildCustomerHook(
     items,
@@ -86,7 +107,11 @@ ${offer}
 今晚就來翁記麻辣鍋！`;
 }
 
-export function sanitizeCopy(text: string, situation?: string): string {
+export function sanitizeCopy(
+  text: string,
+  situation?: string,
+  presetItems?: ReturnType<typeof promoItems>,
+): string {
   let out = text
     .replace(/\[TODO[^\]]*\]/gi, "")
     .replace(/\[Insert[^\]]*\]/gi, "")
@@ -117,18 +142,24 @@ export function sanitizeCopy(text: string, situation?: string): string {
     out += `\n📍${store.address}`;
   }
 
-  if (situation) {
-    const mentioned = promoItems(resolvePromoItems(situation).items);
-    for (const item of mentioned.slice(0, 2)) {
+  if (situation || (presetItems && presetItems.length > 0)) {
+    const mentioned = (
+      presetItems && presetItems.length > 0
+        ? promoItems(presetItems)
+        : promoItems(resolvePromoItems(situation ?? "").items)
+    ).slice(0, 3);
+    for (const item of mentioned) {
       const present = [item.name, item.promoName, ...item.aliases].some((t) =>
         out.includes(t),
       );
-      if (!present && countChars(out) < 125) {
-        out = out.replace(/^/, `【主打${item.name}】`);
+      if (!present) {
         out += `\n${discountPromoLabel(item)}`;
+        if (!out.includes(item.name)) {
+          out = out.replace(/^/, `【主打${item.name}】`);
+        }
       }
     }
-    if (/羊肉|羊/.test(situation) && !/和牛|澳洲/.test(situation)) {
+    if (situation && /羊肉|羊/.test(situation) && !/和牛|澳洲/.test(situation)) {
       out = out
         .split("\n")
         .map((line) => {
@@ -147,9 +178,10 @@ export function sanitizeCopy(text: string, situation?: string): string {
 
   out = out.replace(/\n{3,}/g, "\n\n").trim();
 
-  if (countChars(out) > 160) {
+  // 三樣特價文較長，放寬上限避免裁掉第三樣
+  if (countChars(out) > 220) {
     const lines = out.split("\n").filter(Boolean);
-    out = `${lines.slice(0, 4).join("\n")}\n📍${store.address} ☎️${store.phone}`.trim();
+    out = `${lines.slice(0, 5).join("\n")}\n📍${store.address} ☎️${store.phone}`.trim();
   }
 
   return out;

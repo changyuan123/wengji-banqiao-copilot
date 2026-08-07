@@ -1070,7 +1070,7 @@ export function hasRainCue(situation: string, weatherDesc?: string): boolean {
 }
 
 export function buildClearanceOffer(items: MenuItem[], situation: string): string {
-  const focus = promoItems(items);
+  const focus = promoItems(items).slice(0, 3);
   const urgent = isUrgencyClearance(situation);
   const tail = urgent ? "數量有限，晚來可能售完！" : "今日限時！";
 
@@ -1078,11 +1078,14 @@ export function buildClearanceOffer(items: MenuItem[], situation: string): strin
     return `今晚小鍋$300起，人氣單點限時特惠。${tail}`;
   }
 
-  const labels = focus.slice(0, 2).map(discountPromoLabel);
+  const labels = focus.map(discountPromoLabel);
   if (labels.length === 1) {
     return `今晚主打「${labels[0]}」，搭配小鍋$300起現點現涮。${tail}`;
   }
-  return `今晚主打「${labels[0]}」「${labels[1]}」，小鍋$300起。${tail}`;
+  if (labels.length === 2) {
+    return `今晚主打「${labels[0]}」「${labels[1]}」，小鍋$300起。${tail}`;
+  }
+  return `今晚主打「${labels[0]}」「${labels[1]}」「${labels[2]}」，小鍋$300起。${tail}`;
 }
 
 export function buildCustomerHook(
@@ -1091,25 +1094,19 @@ export function buildCustomerHook(
   weatherDesc: string,
   situation?: string,
 ): string {
-  const focus = promoItems(items);
+  const focus = promoItems(items).slice(0, 3);
   const rain = hasRainCue(situation ?? "", weatherDesc);
   const rainBit = rain ? "雨夜暖鍋·" : "";
   if (focus.length === 0) return `【翁記麻辣鍋｜${rainBit}今晚限時】`;
-  const label = focus
-    .slice(0, 2)
-    .map((i) => i.name)
-    .join("＋");
+  const label = focus.map((i) => i.name).join("＋");
   return `【${rainBit}今晚主打${label}】`;
 }
 
 export function buildCustomerLead(items: MenuItem[]): string {
-  const focus = promoItems(items);
+  const focus = promoItems(items).slice(0, 3);
   if (focus.length === 0) return "篤行路朋友今晚來暖胃！";
   if (focus.length === 1) return `「${discountPromoLabel(focus[0])}」，現點現涮！`;
-  return `主打「${focus
-    .slice(0, 2)
-    .map((i) => discountPromoLabel(i))
-    .join("、")}」！`;
+  return `主打「${focus.map((i) => discountPromoLabel(i)).join("、")}」！`;
 }
 
 export function popularPromoChoices(): MenuItem[] {

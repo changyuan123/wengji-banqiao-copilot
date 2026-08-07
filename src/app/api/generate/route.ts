@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const itemIds = Array.isArray(body.itemIds)
     ? body.itemIds.filter((x: unknown) => typeof x === "string")
     : [];
-  const selected = getItemsByIds(itemIds);
+  const selected = getItemsByIds(itemIds).slice(0, 3);
   const extraNote =
     typeof body.situation === "string" ? body.situation.trim() : "";
 
@@ -65,23 +65,24 @@ export async function POST(request: Request) {
     );
   }
 
-  const matchedMeta = resolved.items.slice(0, 3).map((i) => ({
+  const focusItems = resolved.items.slice(0, 3);
+  const matchedMeta = focusItems.map((i) => ({
     id: i.id,
     name: i.name,
     promoName: i.promoName,
   }));
 
-  // 點選品項時用模板／AI，但 resolve 以 selected 為準：把品名寫進 situation 已完成
   const effectiveSituation =
     selected.length > 0
-      ? situationFromSelectedItems(resolved.items, extraNote)
+      ? situationFromSelectedItems(focusItems, extraNote)
       : situation;
 
   if (forceTemplate) {
     return NextResponse.json({
       text: sanitizeCopy(
-        templateCopy(effectiveSituation, weather),
+        templateCopy(effectiveSituation, weather, focusItems),
         effectiveSituation,
+        focusItems,
       ),
       source: "template",
       matched: matchedMeta,
@@ -93,14 +94,14 @@ export async function POST(request: Request) {
     { role: "system" as const, content: buildSystemPrompt() },
     {
       role: "user" as const,
-      content: buildUserPrompt(effectiveSituation, weather),
+      content: buildUserPrompt(effectiveSituation, weather, focusItems),
     },
   ];
 
   const ai = await generateWithAi(messages);
   if (ai) {
     return NextResponse.json({
-      text: sanitizeCopy(ai.text, effectiveSituation),
+      text: sanitizeCopy(ai.text, effectiveSituation, focusItems),
       source: ai.source,
       matched: matchedMeta,
       providers: configuredAiProviders(),
@@ -109,8 +110,9 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     text: sanitizeCopy(
-      templateCopy(effectiveSituation, weather),
+      templateCopy(effectiveSituation, weather, focusItems),
       effectiveSituation,
+      focusItems,
     ),
     source: "template",
     reason: "no_ai_key_or_all_failed",
