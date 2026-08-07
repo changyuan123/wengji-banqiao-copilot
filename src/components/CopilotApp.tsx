@@ -93,11 +93,11 @@ export function CopilotApp() {
   function toggleItem(id: string) {
     setSelectedIds((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= 3) {
-        showToast("一次最多選 3 樣推到惜食群");
-        return prev;
+      const next = [...prev, id];
+      if (next.length === 10) {
+        showToast("選很多也可以，文案會變長，客人仍看得到全部特價");
       }
-      return [...prev, id];
+      return next;
     });
   }
 
@@ -253,7 +253,7 @@ export function CopilotApp() {
         </h1>
         <p className="mt-2 text-sm text-white/85">{store.subtitle}</p>
         <p className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-[12px] leading-relaxed text-white/90">
-          手機點菜單 → 自動產限時特價文 → 推到惜食群。對客人不說即期／過期。服務跑在雲端，不依賴店內電腦。
+          手機點菜單（不限數量）→ 固定惜食特價清單 → 推到惜食群。對客人不說即期／過期。服務在雲端，不依賴店內電腦。
         </p>
       </header>
 
@@ -286,7 +286,9 @@ export function CopilotApp() {
           <div className="mb-2 flex items-end justify-between gap-2 px-1">
             <div>
               <h2 className="text-sm font-semibold text-[#1a120f]">① 點選今日惜食品</h2>
-              <p className="mt-0.5 text-[11px] text-[#6b5348]">最多 3 樣 · 已選 {selectedIds.length}</p>
+              <p className="mt-0.5 text-[11px] text-[#6b5348]">
+                選幾個寫幾個 · 已選 {selectedIds.length}
+              </p>
             </div>
             {selectedIds.length > 0 && (
               <button

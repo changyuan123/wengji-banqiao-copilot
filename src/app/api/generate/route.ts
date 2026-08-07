@@ -22,7 +22,8 @@ export async function POST(request: Request) {
   const itemIds = Array.isArray(body.itemIds)
     ? body.itemIds.filter((x: unknown) => typeof x === "string")
     : [];
-  const selected = getItemsByIds(itemIds).slice(0, 3);
+  // 不限數量：選幾個寫幾個
+  const selected = getItemsByIds(itemIds);
   const extraNote =
     typeof body.situation === "string" ? body.situation.trim() : "";
 
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const focusItems = resolved.items.slice(0, 3);
+  const focusItems = resolved.items;
   const matchedMeta = focusItems.map((i) => ({
     id: i.id,
     name: i.name,
@@ -77,7 +78,10 @@ export async function POST(request: Request) {
       ? situationFromSelectedItems(focusItems, extraNote)
       : situation;
 
-  if (forceTemplate) {
+  // 點菜單選品：固定惜食清單模板（選幾個寫幾個，較穩定）
+  const preferTemplate = selected.length > 0 || forceTemplate;
+
+  if (preferTemplate) {
     return NextResponse.json({
       text: sanitizeCopy(
         templateCopy(effectiveSituation, weather, focusItems),

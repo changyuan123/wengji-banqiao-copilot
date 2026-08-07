@@ -922,6 +922,15 @@ export function discountPromoLabel(item: MenuItem): string {
   return `${item.name}限時特惠加點`;
 }
 
+/** 清單式短標（多品時口語好掃） */
+export function shortDealLabel(item: MenuItem): string {
+  const deal = discountPrice(item);
+  if (item.price != null && deal != null) {
+    return `${item.name}$${deal}`;
+  }
+  return `${item.name}特惠`;
+}
+
 export function normalizeOral(situation: string): string {
   let s = situation.replace(/\s/g, "");
   for (const [from, to] of Object.entries(ORAL_NORMALIZE)) {
@@ -1070,22 +1079,21 @@ export function hasRainCue(situation: string, weatherDesc?: string): boolean {
 }
 
 export function buildClearanceOffer(items: MenuItem[], situation: string): string {
-  const focus = promoItems(items).slice(0, 3);
+  const focus = promoItems(items);
   const urgent = isUrgencyClearance(situation);
-  const tail = urgent ? "數量有限，晚來可能售完！" : "今日限時！";
+  const tail = urgent ? "數量有限，售完為止。" : "今日限時，歡迎來吃！";
 
   if (focus.length === 0) {
     return `今晚小鍋$300起，人氣單點限時特惠。${tail}`;
   }
 
-  const labels = focus.map(discountPromoLabel);
-  if (labels.length === 1) {
-    return `今晚主打「${labels[0]}」，搭配小鍋$300起現點現涮。${tail}`;
+  if (focus.length === 1) {
+    return `今日限時：${discountPromoLabel(focus[0])}，搭配小鍋$300起。${tail}`;
   }
-  if (labels.length === 2) {
-    return `今晚主打「${labels[0]}」「${labels[1]}」，小鍋$300起。${tail}`;
-  }
-  return `今晚主打「${labels[0]}」「${labels[1]}」「${labels[2]}」，小鍋$300起。${tail}`;
+
+  // 多品：清單式，選幾個寫幾個
+  const list = focus.map(shortDealLabel).join("、");
+  return `今日限時：${list}。小鍋$300起，${tail}`;
 }
 
 export function buildCustomerHook(
@@ -1094,19 +1102,21 @@ export function buildCustomerHook(
   weatherDesc: string,
   situation?: string,
 ): string {
-  const focus = promoItems(items).slice(0, 3);
+  const focus = promoItems(items);
   const rain = hasRainCue(situation ?? "", weatherDesc);
   const rainBit = rain ? "雨夜暖鍋·" : "";
-  if (focus.length === 0) return `【翁記麻辣鍋｜${rainBit}今晚限時】`;
-  const label = focus.map((i) => i.name).join("＋");
-  return `【${rainBit}今晚主打${label}】`;
+  if (focus.length === 0) return `【翁記麻辣鍋｜${rainBit}今晚惜食特價】`;
+  if (focus.length === 1) {
+    return `【${rainBit}今晚惜食特價｜${focus[0].name}】`;
+  }
+  return `【${rainBit}翁記今晚惜食特價】`;
 }
 
 export function buildCustomerLead(items: MenuItem[]): string {
-  const focus = promoItems(items).slice(0, 3);
+  const focus = promoItems(items);
   if (focus.length === 0) return "篤行路朋友今晚來暖胃！";
   if (focus.length === 1) return `「${discountPromoLabel(focus[0])}」，現點現涮！`;
-  return `主打「${focus.map((i) => discountPromoLabel(i)).join("、")}」！`;
+  return `今日限時：${focus.map(shortDealLabel).join("、")}！`;
 }
 
 export function popularPromoChoices(): MenuItem[] {
