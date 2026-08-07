@@ -25,7 +25,7 @@ async function chatCompletionsCompatible(opts: {
       body: JSON.stringify({
         model: opts.model,
         temperature: 0.85,
-        max_tokens: 700,
+        max_tokens: 280,
         messages: opts.messages,
       }),
       signal: controller.signal,
@@ -66,7 +66,7 @@ async function geminiGenerate(opts: {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: "user", parts: [{ text: user }] }],
-        generationConfig: { temperature: 0.85, maxOutputTokens: 700 },
+        generationConfig: { temperature: 0.85, maxOutputTokens: 280 },
       }),
       signal: controller.signal,
     });

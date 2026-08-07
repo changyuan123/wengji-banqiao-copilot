@@ -167,45 +167,41 @@ export function buildClearanceOffer(items: MenuItem[], situation: string): strin
   const clearable = items.filter((i) => i.role !== "perk" && i.role !== "combo");
   const names = clearable.map((i) => i.promoName);
   const urgent = isUrgencyClearance(situation);
-  const urgencyCue = urgent ? "今晚限定、數量有限，晚來可能售完！" : "今日限時，歡迎篤行路朋友來暖胃！";
+  const tail = urgent ? "數量有限，晚來可能售完！" : "今日限時！";
 
   if (names.length === 0) {
-    return `今晚誠摯邀請內用 ${store.menuFocus.combo888}，湯頭溫潤可喝，免服務費。${urgencyCue}`;
+    return `點 ${store.menuFocus.combo888}，湯頭可喝、免服務費。${tail}`;
   }
-
   if (names.length === 1) {
-    const n = names[0];
-    if (urgent) {
-      return `極致回饋【今晚 ${n} 限時特惠】：內用點選 ${store.menuFocus.combo888}，加點／升級「${n}」享特別優惠（約 8 折起，以現場為準），${urgencyCue}`;
-    }
-    return `今日主打：內用點選 ${store.menuFocus.combo888}，再加贈或加點「${n}」，暖胃又過癮！`;
+    return `點 ${store.menuFocus.combo888}，加點／升級「${names[0]}」享限時特惠。${tail}`;
   }
-
   if (names.length === 2) {
-    return `極致回饋【今日雙重主打】：內用點選 ${store.menuFocus.combo888}，可加點「${names[0]}」與「${names[1]}」享限時組合優惠，${urgencyCue}`;
+    return `點 ${store.menuFocus.combo888}，加點「${names[0]}」「${names[1]}」限時優惠。${tail}`;
   }
-
-  const head = names.slice(0, 3).join("、");
-  return `今晚主推 ${store.menuFocus.combo888}，並加碼「${head}」限時加點優惠，${urgencyCue}`;
+  return `點 ${store.menuFocus.combo888}，加碼「${names.slice(0, 3).join("、")}」限時加點。${tail}`;
 }
 
-/** 正面開場句（絕不複述店長內部備註） */
+/** 正面開場句（短） */
 export function buildCustomerHook(items: MenuItem[], weatherTemp: number, weatherDesc: string): string {
   const clearable = items.filter((i) => i.role !== "perk" && i.role !== "combo");
   if (clearable.length === 0) {
-    return `【板橋 ${weatherTemp}°C ${weatherDesc}｜翁記麻辣鍋今晚限時暖胃】`;
+    return `【板橋${weatherTemp}°C ${weatherDesc}｜翁記麻辣鍋限時】`;
   }
-  const label = clearable.map((i) => i.promoName).join("＋");
-  return `【板橋 ${weatherTemp}°C ${weatherDesc}｜今晚主打：${label}】`;
+  const label = clearable
+    .slice(0, 2)
+    .map((i) => i.promoName)
+    .join("＋");
+  return `【今晚主打${label}】`;
 }
 
 export function buildCustomerLead(items: MenuItem[]): string {
   const clearable = items.filter((i) => i.role !== "perk" && i.role !== "combo");
-  if (clearable.length === 0) {
-    return "板橋篤行路的朋友們，今晚想來鍋熱騰騰的麻辣嗎？翁記為您備妥新鮮好料！";
-  }
+  if (clearable.length === 0) return "篤行路朋友今晚來暖胃！";
   if (clearable.length === 1) {
-    return `板橋篤行路的朋友們！今晚特別為您準備「${clearable[0].promoName}」限時特選——口感鮮美、現點現涮，錯過可惜！`;
+    return `今晚「${clearable[0].promoName}」限時特選，現點現涮！`;
   }
-  return `板橋篤行路的朋友們！今晚主打「${clearable.map((i) => i.promoName).join("、")}」限時組合，新鮮好料現點現涮，歡迎來暖胃！`;
+  return `今晚主打「${clearable
+    .slice(0, 2)
+    .map((i) => i.promoName)
+    .join("、")}」，限量優惠！`;
 }

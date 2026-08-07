@@ -16,6 +16,9 @@ export function CopilotApp() {
   const [payBusy, setPayBusy] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [paidBanner, setPaidBanner] = useState<string | null>(null);
+  const [lineConfigured, setLineConfigured] = useState(false);
+  const [lineConfirmOpen, setLineConfirmOpen] = useState(false);
+  const [lineBusy, setLineBusy] = useState(false);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -52,6 +55,11 @@ export function CopilotApp() {
     fetch("/api/subscription")
       .then((r) => r.json())
       .then((d: { subscribed?: boolean }) => setSubscribed(!!d.subscribed))
+      .catch(() => undefined);
+
+    fetch("/api/line/broadcast")
+      .then((r) => r.json())
+      .then((d: { configured?: boolean }) => setLineConfigured(!!d.configured))
       .catch(() => undefined);
 
     const params = new URLSearchParams(window.location.search);
@@ -107,6 +115,31 @@ export function CopilotApp() {
     if (!copyText) return;
     const url = `https://line.me/R/share?text=${encodeURIComponent(copyText)}`;
     window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  async function handleLineBroadcast() {
+    if (!copyText) return;
+    setLineBusy(true);
+    try {
+      const res = await fetch("/api/line/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: copyText, confirm: true }),
+      });
+      const data = (await res.json()) as { error?: string; ok?: boolean };
+      if (!res.ok) {
+        showToast(data.error || "LINE 推播失敗");
+        setLineBusy(false);
+        setLineConfirmOpen(false);
+        return;
+      }
+      showToast("已推播至 LINE 官方帳號好友！");
+      setLineConfirmOpen(false);
+    } catch {
+      showToast("網路異常，無法推播");
+    } finally {
+      setLineBusy(false);
+    }
   }
 
   async function handleCheckout() {
@@ -250,9 +283,9 @@ export function CopilotApp() {
             className="relative rounded-2xl bg-white p-4 shadow-sm anim-rise"
             style={{ border: "1px solid var(--wj-line)" }}
           >
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold">今日文案預覽</h2>
-              <div className="flex gap-2">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold">今日文案預覽（精簡版）</h2>
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={handleCopy}
@@ -269,11 +302,26 @@ export function CopilotApp() {
                 >
                   LINE 分享
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!copyText) return;
+                    if (!lineConfigured) {
+                      showToast("尚未設定 LINE OA Token，請先到 Vercel 填 LINE_CHANNEL_ACCESS_TOKEN");
+                      return;
+                    }
+                    setLineConfirmOpen(true);
+                  }}
+                  disabled={!copyText}
+                  className="rounded-lg bg-[#06C755] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                >
+                  一鍵推播 LINE OA
+                </button>
               </div>
             </div>
-            <pre className="max-h-[340px] overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-[#fff8f4] p-3 text-[13px] leading-relaxed text-[#1a120f]">
+            <pre className="max-h-[280px] overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-[#fff8f4] p-3 text-[13px] leading-relaxed text-[#1a120f]">
               {genState === "loading"
-                ? "AI 正在依你輸入的營業狀況與板橋天氣撰寫…"
+                ? "AI 正在寫短文案（約 80～140 字）…"
                 : copyText}
             </pre>
           </section>
@@ -303,6 +351,47 @@ export function CopilotApp() {
         </button>
       </div>
 
+      {lineConfirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 pb-6 sm:items-center"
+          role="dialog"
+          aria-modal
+          onClick={() => !lineBusy && setLineConfirmOpen(false)}
+        >
+          <div
+            className="w-full max-w-[400px] rounded-2xl bg-white p-5 shadow-xl anim-rise"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-[#1a120f]">確認推播至 LINE 官方帳號？</h3>
+            <p className="mt-2 text-sm leading-relaxed text-[#6b5348]">
+              將把上方文案廣播給所有加入 OA 的好友。請確認內容無誤後再送出。
+            </p>
+            <pre className="mt-3 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl bg-[#fff8f4] p-3 text-xs text-[#1a120f]">
+              {copyText}
+            </pre>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                className="flex-1 rounded-xl border border-[#eadcd4] py-3 text-sm font-medium"
+                disabled={lineBusy}
+                onClick={() => setLineConfirmOpen(false)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="flex-[1.4] rounded-xl py-3 text-sm font-bold text-white disabled:opacity-70"
+                style={{ background: "#06C755" }}
+                disabled={lineBusy}
+                onClick={handleLineBroadcast}
+              >
+                {lineBusy ? "推播中…" : "確認推播"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {payOpen && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 pb-6 sm:items-center"
@@ -325,9 +414,9 @@ export function CopilotApp() {
               多賣一桌雙人套餐即完全回本。
             </p>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#1a120f]">
-              <li>板橋即時天氣連動文案</li>
-              <li>三種營業目標一鍵產出</li>
-              <li>可直接貼 LINE OA／FB</li>
+              <li>板橋天氣＋今日營業狀況產出短文案</li>
+              <li>一鍵複製／推播 LINE 官方帳號</li>
+              <li>依菜單主打限時優惠，不嚇跑客人</li>
             </ul>
             <div className="mt-5 flex gap-2">
               <button

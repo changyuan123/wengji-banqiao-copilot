@@ -24,10 +24,19 @@ npm run dev
 ## 功能（MVP）
 
 - 板橋即時天氣（Open-Meteo；失敗則氣候模擬）
-- 老闆自行輸入「今日營業狀況」（湯／鴨血／雞肉／豆皮／空桌／外帶等），系統對照完整菜單後產出清料優惠文案
-- AI 免費優先：`GROQ_API_KEY`（Llama）→ `GEMINI_API_KEY` → `OPENAI_API_KEY`；都沒有則走智能菜單模板（仍會點名你輸入的品項）
-- 一鍵複製、LINE 分享
-- 綠界信用卡**定期定額** NT$999／月
+- 老闆自行輸入「今日營業狀況」，系統對照菜單產出**精簡**清料／限時優惠文案（目標 **80～140 字**）
+- AI 免費優先：`GROQ_API_KEY` → `GEMINI_API_KEY` → `OPENAI_API_KEY`
+- 一鍵複製、LINE 分享、**一鍵推播 LINE 官方帳號**（需 `LINE_CHANNEL_ACCESS_TOKEN`）
+- 綠界信用卡定期定額 NT$999／月
+
+## LINE OA 一鍵推播設定
+
+1. 到 [LINE Developers](https://developers.line.biz/console/) 建立／選取 Messaging API Channel  
+2. 發行 **Channel access token**（長期）  
+3. 在 Vercel 環境變數新增 `LINE_CHANNEL_ACCESS_TOKEN` 並 Redeploy  
+4. 網站產生文案後點「一鍵推播 LINE OA」→ 確認 → 廣播給 OA 好友  
+
+> 廣播會發給所有好友，請務必先預覽確認。測試可用測試用 OA。
 
 ## 環境變數
 
@@ -38,6 +47,7 @@ npm run dev
 | `GROQ_API_KEY` | **建議先填**，Groq 免費額度即可寫文案 |
 | `GEMINI_API_KEY` | Google AI Studio 免費 Key（Groq 備援） |
 | `OPENAI_API_KEY` | 可選 |
+| `LINE_CHANNEL_ACCESS_TOKEN` | LINE OA Messaging API 推播 |
 | `ECPAY_MERCHANT_ID` | 綠界特店代號 |
 | `ECPAY_HASH_KEY` | 綠界 HashKey |
 | `ECPAY_HASH_IV` | 綠界 HashIV |
