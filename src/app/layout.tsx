@@ -19,13 +19,25 @@ const serif = Noto_Serif_TC({
 
 export const metadata: Metadata = {
   title: store.title,
-  description: `${store.fullName}專屬 AI 爆客助手：依板橋天氣一鍵產生 LINE／社群文案`,
+  description:
+    "翁記麻辣鍋板橋店惜食特價：手機點菜單、產限時特價文、推播惜食群。雲端託管，不依賴店內電腦。",
+  applicationName: "翁記惜食特價",
+  appleWebApp: {
+    capable: true,
+    title: "翁記惜食特價",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: { telephone: true },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
   themeColor: "#8B0000",
 };
 
@@ -36,6 +48,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-Hant">
+      <head>
+        <link rel="manifest" href="/manifest.webmanifest" />
+      </head>
       <body className={`${sans.variable} ${serif.variable} antialiased`}>
         {children}
       </body>

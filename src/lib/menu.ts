@@ -1116,6 +1116,55 @@ export function popularPromoChoices(): MenuItem[] {
   return menuCatalog.filter((m) => m.popular && m.role !== "pot").slice(0, 8);
 }
 
+export function getItemsByIds(ids: string[]): MenuItem[] {
+  const uniq = [...new Set(ids.filter(Boolean))];
+  return uniq
+    .map((id) => menuCatalog.find((m) => m.id === id))
+    .filter((m): m is MenuItem => !!m && m.role !== "pot" && m.role !== "perk");
+}
+
+/** 手機點選用：分類菜單按鈕（不含鍋資大小） */
+export function selectableMenuGroups(): {
+  category: string;
+  items: { id: string; name: string; price?: number; popular?: boolean }[];
+}[] {
+  const groups: { category: string; roles: MenuItem["role"][] }[] = [
+    { category: "嚴選肉品", roles: ["protein"] },
+    { category: "燙滷珍饈", roles: ["braised"] },
+    { category: "海味佳餚", roles: ["seafood"] },
+    { category: "養生菇類", roles: ["mushroom"] },
+    { category: "生鮮蔬食", roles: ["veg"] },
+    { category: "美味加點", roles: ["addon"] },
+    { category: "手工丸滑", roles: ["ball"] },
+    { category: "手工餃類", roles: ["dumpling"] },
+    { category: "精選鍋物", roles: ["side"] },
+    { category: "米麵副食", roles: ["carb"] },
+  ];
+  return groups.map((g) => ({
+    category: g.category,
+    items: menuCatalog
+      .filter((m) => g.roles.includes(m.role))
+      .map((m) => ({
+        id: m.id,
+        name: m.name,
+        price: m.price,
+        popular: m.popular,
+      })),
+  }));
+}
+
+/** 從已選品項組成內部備註（對客文案不會出現即期／過期） */
+export function situationFromSelectedItems(
+  items: MenuItem[],
+  extraNote?: string,
+): string {
+  const names = items.map((i) => i.name);
+  if (names.length === 0) return (extraNote ?? "").trim();
+  const base = `${names.join("、")}要過期了，限時特價推惜食群`;
+  const note = (extraNote ?? "").trim();
+  return note ? `${base}。${note}` : base;
+}
+
 /** 依分類輸出完整菜單（給人眼檢查） */
 export function menuDatabaseSummary(): { category: string; count: number; items: string[] }[] {
   const groups: { category: string; roles: MenuItem["role"][] }[] = [

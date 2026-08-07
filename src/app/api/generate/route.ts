@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { configuredAiProviders, generateWithAi } from "@/lib/ai";
-import { resolvePromoItems } from "@/lib/menu";
+import {
+  getItemsByIds,
+  resolvePromoItems,
+  situationFromSelectedItems,
+} from "@/lib/menu";
 import {
   buildSystemPrompt,
   buildUserPrompt,
@@ -15,12 +19,21 @@ export const maxDuration = 30;
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
-  const situation =
+  const itemIds = Array.isArray(body.itemIds)
+    ? body.itemIds.filter((x: unknown) => typeof x === "string")
+    : [];
+  const selected = getItemsByIds(itemIds);
+  const extraNote =
     typeof body.situation === "string" ? body.situation.trim() : "";
+
+  const situation =
+    selected.length > 0
+      ? situationFromSelectedItems(selected, extraNote)
+      : extraNote;
 
   if (situation.length < 2) {
     return NextResponse.json(
-      { error: "請輸入今天要推的品項（例如：空心菜要過期了）" },
+      { error: "請先點選今天要推到惜食群的品項" },
       { status: 400 },
     );
   }
@@ -30,13 +43,16 @@ export async function POST(request: Request) {
       ? body.weather
       : simulateBanqiaoWeather();
 
-  const resolved = resolvePromoItems(situation);
+  const resolved =
+    selected.length > 0
+      ? { items: selected, candidates: [], matched: true as const }
+      : resolvePromoItems(situation);
   const forceTemplate = body.forceTemplate === true;
 
   if (!resolved.matched || resolved.items.length === 0) {
     return NextResponse.json(
       {
-        error: "認不出要推哪一道，請點選下方品項或改寫品名後再生成",
+        error: "認不出要推哪一道，請點選菜單按鈕",
         needItem: true,
         candidates: resolved.candidates.map((c) => ({
           id: c.id,
@@ -55,9 +71,18 @@ export async function POST(request: Request) {
     promoName: i.promoName,
   }));
 
+  // 點選品項時用模板／AI，但 resolve 以 selected 為準：把品名寫進 situation 已完成
+  const effectiveSituation =
+    selected.length > 0
+      ? situationFromSelectedItems(resolved.items, extraNote)
+      : situation;
+
   if (forceTemplate) {
     return NextResponse.json({
-      text: sanitizeCopy(templateCopy(situation, weather), situation),
+      text: sanitizeCopy(
+        templateCopy(effectiveSituation, weather),
+        effectiveSituation,
+      ),
       source: "template",
       matched: matchedMeta,
       providers: configuredAiProviders(),
@@ -66,13 +91,16 @@ export async function POST(request: Request) {
 
   const messages = [
     { role: "system" as const, content: buildSystemPrompt() },
-    { role: "user" as const, content: buildUserPrompt(situation, weather) },
+    {
+      role: "user" as const,
+      content: buildUserPrompt(effectiveSituation, weather),
+    },
   ];
 
   const ai = await generateWithAi(messages);
   if (ai) {
     return NextResponse.json({
-      text: sanitizeCopy(ai.text, situation),
+      text: sanitizeCopy(ai.text, effectiveSituation),
       source: ai.source,
       matched: matchedMeta,
       providers: configuredAiProviders(),
@@ -80,7 +108,10 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    text: sanitizeCopy(templateCopy(situation, weather), situation),
+    text: sanitizeCopy(
+      templateCopy(effectiveSituation, weather),
+      effectiveSituation,
+    ),
     source: "template",
     reason: "no_ai_key_or_all_failed",
     matched: matchedMeta,
