@@ -192,12 +192,20 @@ export function CopilotApp() {
           aria-hidden
         />
         <p className="text-[11px] tracking-[0.18em] text-white/75">WENG JI · BANQIAO</p>
-        <h1
-          className="font-display mt-2 text-[1.55rem] leading-snug font-bold"
-          style={{ fontFamily: "var(--font-noto-serif), var(--font-display)" }}
-        >
-          {store.headerTitle}
-        </h1>
+        <div className="mt-2 flex items-start justify-between gap-2">
+          <h1
+            className="font-display text-[1.55rem] leading-snug font-bold"
+            style={{ fontFamily: "var(--font-noto-serif), var(--font-display)" }}
+          >
+            {store.headerTitle}
+          </h1>
+          <a
+            href="/radar/"
+            className="shrink-0 rounded-lg bg-white/15 px-2.5 py-1.5 text-[11px] font-semibold text-white ring-1 ring-white/30"
+          >
+            競品動態
+          </a>
+        </div>
         <p className="mt-2 text-sm text-white/85">{store.subtitle}</p>
       </header>
 

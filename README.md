@@ -27,7 +27,17 @@ npm run dev
 - 老闆自行輸入「今日營業狀況」，系統對照菜單產出**精簡**清料／限時優惠文案（目標 **80～140 字**）
 - AI 免費優先：`GROQ_API_KEY` → `GEMINI_API_KEY` → `OPENAI_API_KEY`
 - 一鍵複製、LINE 分享、**一鍵推播 LINE 官方帳號**（需 `LINE_CHANNEL_ACCESS_TOKEN`）
-- 綠界信用卡定期定額 NT$999／月
+- **競品動態** `/radar`：篤行路商圈情報流（公開新聞 RSS＋在地情報），Threads 風格一條條給老闆掃
+
+## 競品動態
+
+開啟：https://你的網域/radar  
+
+資料來源：
+1. Google News RSS（競品店名關鍵字）  
+2. 內建在地情報卡（新聞稀少時仍有內容）  
+
+之後可再接 FB／Google 商家評論等 API。
 
 ## LINE OA 一鍵推播設定
 
