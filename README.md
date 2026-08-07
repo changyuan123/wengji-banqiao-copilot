@@ -28,6 +28,7 @@ npm run dev
 - AI 免費優先：`GROQ_API_KEY` → `GEMINI_API_KEY` → `OPENAI_API_KEY`
 - 一鍵複製、LINE 分享、**一鍵推播 LINE 官方帳號**（需 `LINE_CHANNEL_ACCESS_TOKEN`）
 - **競品動態** `/radar`：篤行路商圈情報流（公開新聞 RSS＋在地情報），Threads 風格一條條給老闆掃
+- 綠界信用卡定期定額 NT$999／月
 
 ## 競品動態
 
