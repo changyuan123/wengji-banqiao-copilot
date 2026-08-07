@@ -23,8 +23,11 @@ export function CopilotApp() {
   const [subscribed, setSubscribed] = useState(false);
   const [paidBanner, setPaidBanner] = useState<string | null>(null);
   const [lineConfigured, setLineConfigured] = useState(false);
+  const [lineAddFriendUrl, setLineAddFriendUrl] = useState<string | null>(null);
+  const [lineSetupSteps, setLineSetupSteps] = useState<string[]>([]);
   const [lineConfirmOpen, setLineConfirmOpen] = useState(false);
   const [lineBusy, setLineBusy] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -72,7 +75,17 @@ export function CopilotApp() {
 
     fetch("/api/line/broadcast")
       .then((r) => r.json())
-      .then((d: { configured?: boolean }) => setLineConfigured(!!d.configured))
+      .then(
+        (d: {
+          configured?: boolean;
+          addFriendUrl?: string | null;
+          setupSteps?: string[];
+        }) => {
+          setLineConfigured(!!d.configured);
+          setLineAddFriendUrl(d.addFriendUrl || null);
+          setLineSetupSteps(d.setupSteps ?? []);
+        },
+      )
       .catch(() => undefined);
 
     const params = new URLSearchParams(window.location.search);
@@ -159,13 +172,26 @@ export function CopilotApp() {
       document.execCommand("copy");
       document.body.removeChild(ta);
     }
-    showToast("已複製！可貼到惜食群（建議用下方一鍵推播）");
+    showToast("已複製！建議用下方「一鍵推播 LINE OA」給好友");
   }
 
   function handleLineShare() {
     if (!copyText) return;
     const url = `https://line.me/R/share?text=${encodeURIComponent(copyText)}`;
     window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  async function copyAddFriendUrl() {
+    if (!lineAddFriendUrl) {
+      showToast("尚未設定加好友連結（Vercel：NEXT_PUBLIC_LINE_OA_URL）");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(lineAddFriendUrl);
+      showToast("加好友連結已複製，可貼在店內／限時動態");
+    } catch {
+      showToast(lineAddFriendUrl);
+    }
   }
 
   async function handleLineBroadcast() {
@@ -184,7 +210,7 @@ export function CopilotApp() {
         setLineConfirmOpen(false);
         return;
       }
-      showToast("已推播至惜食／LINE 官方帳號好友！");
+      showToast("已推播至惜食 LINE OA 好友！");
       setLineConfirmOpen(false);
     } catch {
       showToast("網路異常，無法推播");
@@ -244,7 +270,9 @@ export function CopilotApp() {
           style={{ background: "radial-gradient(circle, #ffb08a, transparent 70%)" }}
           aria-hidden
         />
-        <p className="text-[11px] tracking-[0.18em] text-white/75">惜食特價 · 雲端推播</p>
+        <p className="text-[11px] tracking-[0.18em] text-white/75">
+          商家後台 · LINE OA 第一版
+        </p>
         <h1
           className="mt-2 font-display text-[1.45rem] leading-snug font-bold"
           style={{ fontFamily: "var(--font-noto-serif), var(--font-display)" }}
@@ -253,7 +281,9 @@ export function CopilotApp() {
         </h1>
         <p className="mt-2 text-sm text-white/85">{store.subtitle}</p>
         <p className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-[12px] leading-relaxed text-white/90">
-          手機點菜單（不限數量）→ 固定惜食特價清單 → 推到惜食群。對客人不說即期／過期。服務在雲端，不依賴店內電腦。
+          本階段主通道是<strong className="font-semibold">惜食 LINE 官方帳號</strong>
+          ：點菜單產文 → 一鍵廣播給 OA 好友。先累積約 {store.friendGoal}{" "}
+          位客人，再做下一版加強。
         </p>
       </header>
 
@@ -266,6 +296,64 @@ export function CopilotApp() {
             {paidBanner}
           </div>
         )}
+
+        <section
+          className="rounded-2xl bg-white px-4 py-3 shadow-sm anim-rise"
+          style={{ border: "1px solid var(--wj-line)" }}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-[#6b5348]">惜食 LINE OA 狀態</p>
+              <p className="mt-0.5 text-[15px] font-semibold text-[#1a120f]">
+                {lineConfigured ? "已接上，可一鍵推播" : "尚未接線（無法廣播）"}
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-[#6b5348]">
+                {lineConfigured
+                  ? `目標：先累積約 ${store.friendGoal} 位會收特價的好友，再加強今日頁／核銷。`
+                  : "請用手機完成下方接線步驟；Token 只填在 Vercel 雲端。"}
+              </p>
+            </div>
+            <span
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                lineConfigured ? "bg-[#06C755]/15 text-[#06C755]" : "bg-[#eadcd4] text-[#6b5348]"
+              }`}
+            >
+              {lineConfigured ? "ON" : "OFF"}
+            </span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setSetupOpen((v) => !v)}
+              className="rounded-lg border border-[#eadcd4] px-3 py-2 text-[11px] font-semibold text-[#8B0000]"
+            >
+              {setupOpen ? "收起接線步驟" : "查看 LINE OA 接線步驟"}
+            </button>
+            <button
+              type="button"
+              onClick={copyAddFriendUrl}
+              className="rounded-lg bg-[#06C755] px-3 py-2 text-[11px] font-semibold text-white"
+            >
+              複製加好友連結
+            </button>
+          </div>
+          {setupOpen && (
+            <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-[12px] leading-relaxed text-[#1a120f]">
+              {(lineSetupSteps.length
+                ? lineSetupSteps
+                : [
+                    "LINE Developers 建立 Messaging API Channel",
+                    "發行長期 Channel access token",
+                    "Vercel 填 LINE_CHANNEL_ACCESS_TOKEN 並 Redeploy",
+                    "可選填 NEXT_PUBLIC_LINE_OA_URL（加好友連結）",
+                    "本站產文 → 一鍵推播",
+                  ]
+              ).map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          )}
+        </section>
 
         <section
           className="rounded-2xl bg-white px-4 py-3 shadow-sm anim-rise"
@@ -396,7 +484,7 @@ export function CopilotApp() {
             {matchedLabel && (
               <p className="mb-2 text-[11px] text-[#6b5348]">{matchedLabel}</p>
             )}
-            <h2 className="mb-2 text-sm font-semibold">④ 預覽 → 推惜食群</h2>
+            <h2 className="mb-2 text-sm font-semibold">④ 預覽 → 推播惜食 LINE OA</h2>
             <pre className="max-h-[240px] overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-[#fff8f4] p-3 text-[13px] leading-relaxed text-[#1a120f]">
               {genState === "loading" ? "正在寫限時特價短文…" : copyText}
             </pre>
@@ -415,14 +503,15 @@ export function CopilotApp() {
                 disabled={!copyText}
                 className="rounded-xl border border-[#06C755] py-3 text-xs font-semibold text-[#06C755] disabled:opacity-40"
               >
-                LINE 分享
+                備援：LINE 分享
               </button>
               <button
                 type="button"
                 onClick={() => {
                   if (!copyText) return;
                   if (!lineConfigured) {
-                    showToast("尚未設定 LINE Token：請在 Vercel 填 LINE_CHANNEL_ACCESS_TOKEN");
+                    setSetupOpen(true);
+                    showToast("請先完成 LINE OA 接線（見上方步驟）");
                     return;
                   }
                   setLineConfirmOpen(true);
@@ -430,12 +519,17 @@ export function CopilotApp() {
                 disabled={!copyText}
                 className="col-span-2 rounded-xl bg-[#06C755] py-3.5 text-sm font-bold text-white disabled:opacity-40"
               >
-                一鍵推播惜食群（LINE OA）
+                一鍵推播惜食 LINE OA（主通道）
               </button>
             </div>
             {!lineConfigured && (
               <p className="mt-2 text-[11px] leading-relaxed text-[#6b5348]">
-                推播需在雲端（Vercel）設定 LINE OA Token。未設定仍可複製／LINE 分享。
+                主通道尚未接線：請在 Vercel 設定 LINE_CHANNEL_ACCESS_TOKEN 後 Redeploy。未接線仍可複製／分享測試文案。
+              </p>
+            )}
+            {lineConfigured && (
+              <p className="mt-2 text-[11px] leading-relaxed text-[#6b5348]">
+                推播會發給所有 OA 好友。請持續邀客人加好友，目標約 {store.friendGoal} 人。
               </p>
             )}
           </section>
@@ -474,9 +568,9 @@ export function CopilotApp() {
             className="w-full max-w-[400px] rounded-2xl bg-white p-5 shadow-xl anim-rise"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold text-[#1a120f]">確認推播到惜食群？</h3>
+            <h3 className="text-lg font-bold text-[#1a120f]">確認推播到惜食 LINE OA？</h3>
             <p className="mt-2 text-sm leading-relaxed text-[#6b5348]">
-              將把特價文廣播給 LINE 官方帳號好友（惜食客群）。請確認內容無「過期／即期」字眼。
+              將廣播給所有已加官方帳號的好友。請確認沒有「過期／即期」等內部用語。客人可再轉傳給朋友。
             </p>
             <pre className="mt-3 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl bg-[#fff8f4] p-3 text-xs text-[#1a120f]">
               {copyText}

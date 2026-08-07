@@ -1,46 +1,55 @@
-# 翁記麻辣鍋板橋店｜惜食特價推播
+# 翁記麻辣鍋板橋店｜惜食特價（LINE OA 第一版）
 
-專為 **翁記麻辣鍋－板橋店** 的雲端惜食工具：手機點菜單 → 產限時特價文（不說即期）→ 推播 LINE 惜食客群。
-
+**商家後台：** 手機點菜單 → 產限時特價文 → **一鍵推播惜食 LINE OA**  
+**客人端：** 加官方帳號好友，收今日特價（可轉傳）  
 **正式網址：** https://wengji-banqiao-copilot.vercel.app  
 **Repo：** https://github.com/changyuan123/wengji-banqiao-copilot
 
-## 為什麼一定要放雲端
+## 本階段目標（先做小）
 
-- 店長用**手機／平板**操作，不依賴店內電腦  
-- 程式與設定在 **GitHub + Vercel**；本機壞了、關機，服務仍在  
-- 換電腦開 Cursor／Codespace 即可繼續改，**客人不受影響**  
-- **禁止**在約 8GB 文書機本機跑 `npm install` / `npm run dev` / `npm run build`
+1. 接好 **一個惜食 LINE 官方帳號（OA）**  
+2. 只有系統／OA **廣播**給好友（不要用店家自建群當主通道）  
+3. 先累積約 **100 位**會來看特價的客人  
+4. 到 100 人後再做：今日頁連結、核銷等加強  
 
-開發請用 **GitHub Codespaces**；正式環境用 **Vercel**（跟 GitHub `main` 自動部署）。
+## 雲端優先
 
-## 功能
+- 服務在 **GitHub + Vercel**，不依賴店內電腦  
+- **禁止**在約 8GB 文書機本機 `npm install` / `dev` / `build`  
+- 開發用 **GitHub Codespaces**
 
-1. 完整菜單按鈕（分類瀏覽，一次最多選 3 樣）  
-2. 自動產 80～140 字限時特價文（約八折話術，禁止「過期／即期」）  
-3. 複製／LINE 分享／**一鍵推播 LINE OA**（惜食群）  
-4. 板橋天氣可當氣氛鉤子  
-5. 綠界訂閱 NT$999／月  
+## LINE OA 接線（必做）
 
-競品動態已收斂：`/radar` 僅導回惜食首頁。
+1. 開啟 [LINE Developers Console](https://developers.line.biz/console/)  
+2. 建立 Provider → 建立 **Messaging API** Channel（官方帳號）  
+3. 進入 Channel → **Messaging API** → **Issue** 長期 Channel access token  
+4. Vercel → 專案 → Settings → Environment Variables：
 
-## LINE OA 推播
+| 變數 | 必填 | 說明 |
+|------|------|------|
+| `LINE_CHANNEL_ACCESS_TOKEN` | ✅ | 推播用 Token |
+| `NEXT_PUBLIC_LINE_OA_URL` | 建議 | 加好友連結，例如 `https://line.me/R/ti/p/@xxxxx` |
+| `GROQ_API_KEY` | 可選 | 本階段點菜單多走固定模板，可暫不填 |
+| `NEXT_PUBLIC_SITE_URL` | 訂閱用 | `https://wengji-banqiao-copilot.vercel.app` |
 
-1. [LINE Developers](https://developers.line.biz/console/) 發行 Channel access token  
-2. Vercel 環境變數：`LINE_CHANNEL_ACCESS_TOKEN` → Redeploy  
-3. 手機上產文 →「一鍵推播惜食群」
+5. **Redeploy** 後打開商家後台，狀態應顯示「已接上惜食 LINE OA」  
+6. 點菜單產文 → **一鍵推播 LINE OA** → 用另一支手機加 OA 好友測試是否收到  
 
-## 環境變數
+> 廣播會發給**所有好友**，推播前請預覽確認。對客人只寫限時特價，不寫即期／過期。
 
-| 變數 | 說明 |
-|------|------|
-| `GROQ_API_KEY` | 建議：文案 AI |
-| `GEMINI_API_KEY` | 備援 |
-| `OPENAI_API_KEY` | 可選 |
-| `LINE_CHANNEL_ACCESS_TOKEN` | 惜食群推播 |
-| `ECPAY_*` / `SUBSCRIPTION_SECRET` / `NEXT_PUBLIC_SITE_URL` | 訂閱 |
+## 邀客人加 OA（累積到 100）
+
+- 店內放加好友 QR（LINE Official Account Manager 可下載）  
+- 結帳／候位時請客人「加 LINE 收今晚惜食特價」  
+- 後台若有設定 `NEXT_PUBLIC_LINE_OA_URL`，畫面會顯示可複製的加好友連結  
+
+## 商家後台功能
+
+- 菜單按鈕多選（**不限數量**，選幾個寫幾個）  
+- 固定惜食清單文案＋約八折話術  
+- 一鍵推播 LINE OA（主通道）  
+- 複製／分享（備援）  
 
 ## 部署
 
-Push `main` → Vercel 自動部署。  
-Import：https://vercel.com/new/import?s=https://github.com/changyuan123/wengji-banqiao-copilot
+Push `main` → Vercel 自動部署。
