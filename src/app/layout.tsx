@@ -20,7 +20,7 @@ const serif = Noto_Serif_TC({
 export const metadata: Metadata = {
   title: store.title,
   description:
-    "翁記麻辣鍋板橋店商家後台：點菜單產惜食特價、一鍵推播 LINE OA。先累積約 100 位好友再加強。",
+    "翁記麻辣鍋板橋店商家後台：發布今日惜食特價網頁。客人開連結／掃 QR 即可，不用 LINE。",
   applicationName: "翁記惜食商家後台",
   appleWebApp: {
     capable: true,

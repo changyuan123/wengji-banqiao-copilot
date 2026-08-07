@@ -2,30 +2,26 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "已改為惜食特價｜翁記板橋店",
-  description: "競品動態已收斂，請使用首頁惜食特價推播",
+  title: "已改為今日特價網頁｜翁記板橋店",
   robots: { index: false, follow: false },
 };
 
-/** 產品轉向惜食特價後，競品頁改為導回主流程 */
 export default function RadarPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-[430px] flex-col justify-center gap-4 px-5 py-10">
-      <h1
-        className="font-display text-xl font-bold text-[#1a120f]"
-        style={{ fontFamily: "var(--font-noto-serif), serif" }}
-      >
-        產品已改為「惜食特價推播」
-      </h1>
+      <h1 className="text-xl font-bold text-[#1a120f]">產品已改為「今日特價網頁」</h1>
       <p className="text-sm leading-relaxed text-[#6b5348]">
-        我們不再主打店家互看競品。請用首頁：點菜單按鈕 → 產限時特價文 → 推播惜食群。服務在
-        Vercel 雲端，手機即可操作。
+        不再使用 LINE 推播當主通道。店長在後台發布特價，客人打開／today
+        或專屬連結即可查看與轉傳。
       </p>
       <Link
-        href="/"
+        href="/today"
         className="rounded-2xl bg-[#8B0000] px-4 py-3.5 text-center text-sm font-bold text-white"
       >
-        回到惜食特價首頁
+        看今日特價頁
+      </Link>
+      <Link href="/" className="text-center text-sm font-medium text-[#8B0000]">
+        商家後台
       </Link>
     </main>
   );

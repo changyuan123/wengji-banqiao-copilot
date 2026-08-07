@@ -2,9 +2,9 @@ export const store = {
   name: "翁記麻辣鍋",
   branch: "板橋店",
   fullName: "翁記麻辣鍋－板橋店",
-  title: "翁記惜食特價｜商家後台",
+  title: "翁記惜食｜商家後台",
   headerTitle: "翁記惜食｜商家後台",
-  subtitle: "點菜單產特價 → 推播惜食 LINE OA · 板橋篤行路三段28號",
+  subtitle: "發布今日特價網頁 · 板橋篤行路三段28號",
   address: "新北市板橋區篤行路三段28號",
   addressHint: "玉平巷口",
   phone: "(02) 8675-5919",
@@ -12,8 +12,7 @@ export const store = {
   lon: 121.4322,
   district: "板橋",
   subscriptionPrice: 999,
-  /** 本階段：先做 LINE OA；客池約 100 人後再加強 */
-  productPhase: "line_oa_first" as const,
+  productPhase: "web_today_board" as const,
   friendGoal: 100,
   potSizes: [
     { name: "小鍋", people: "1–3人", price: 300 },
@@ -22,9 +21,9 @@ export const store = {
   ],
   broths: ["紅鍋（麻辣）", "紅／白鍋（鴛鴦）", "白鍋（蔬菜）"],
   strengths: [
-    "商家後台：手機點菜單",
-    "固定惜食特價清單（不說即期）",
-    "一鍵推播惜食 LINE OA",
+    "手機點菜單發布今日特價",
+    "客人開連結／掃 QR 即可看",
+    "可轉傳，不用 LINE",
     "雲端託管，不依賴店內電腦",
   ],
 } as const;
