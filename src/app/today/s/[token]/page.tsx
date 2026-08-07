@@ -6,14 +6,17 @@ import { decodeTodayToken, payloadToView, siteOrigin } from "@/lib/today-deal";
 import { TodayDealCard } from "@/components/TodayDealCard";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type Props = { params: Promise<{ token: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { token } = await params;
-  const deal = payloadToView(decodeTodayToken(token) ?? { v: 1, at: "", ids: [] });
+  const payload = decodeTodayToken(token);
+  const deal = payload ? payloadToView(payload) : null;
+  const names = deal?.items.map((i) => i.name).slice(0, 3).join("、");
   return {
-    title: deal ? `今日惜食｜${deal.items.map((i) => i.name).slice(0, 3).join("、")}` : "今日惜食特價",
+    title: names ? `今日惜食｜${names}` : "今日惜食特價",
     description: "翁記麻辣鍋板橋店限時特價，歡迎轉傳。",
   };
 }

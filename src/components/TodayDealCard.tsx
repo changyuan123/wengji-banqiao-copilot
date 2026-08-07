@@ -1,13 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import type { TodayDealView } from "@/lib/today-deal";
+
+export type TodayDealCardData = {
+  at: string;
+  text: string;
+  address: string;
+  phone: string;
+  items: {
+    id: string;
+    name: string;
+    price?: number;
+    deal: number | null;
+  }[];
+};
 
 export function TodayDealCard({
   deal,
   shareUrl,
 }: {
-  deal: TodayDealView;
+  deal: TodayDealCardData;
   shareUrl: string;
 }) {
   const [toast, setToast] = useState<string | null>(null);
