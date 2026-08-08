@@ -27,14 +27,14 @@ export async function POST(request: Request) {
     return new NextResponse("1|OK", { status: 200 });
   }
 
-  const token = mintSubscriptionCookie(31);
+  const token = mintSubscriptionCookie(93);
   const res = new NextResponse("1|OK", { status: 200 });
   res.cookies.set(SUB_COOKIE, token, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
     path: "/",
-    maxAge: 31 * 86400,
+    maxAge: 93 * 86400,
   });
   return res;
 }

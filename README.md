@@ -1,28 +1,25 @@
-# 翁記麻辣鍋板橋店｜今晚惜食驚喜袋
+# 惜食驚喜袋平台（Too Good To Go 風格）
 
-類似 **Too Good To Go**：店長上架今晚驚喜袋 → 客人預約 → 到店掃碼取袋並付款。
+店長上架今晚多種驚喜袋 → 客人留聯絡方式並預約 → 到店掃碼取袋付款。
 
 - **商家後台：** https://wengji-banqiao-copilot.vercel.app
-- **客人今晚頁：** https://wengji-banqiao-copilot.vercel.app/today
+- **客人今晚貨架：** https://wengji-banqiao-copilot.vercel.app/today
 - **店長掃碼取袋：** https://wengji-banqiao-copilot.vercel.app/scan
-- **驗證流程說明：** https://wengji-banqiao-copilot.vercel.app/verify
+- **驗證說明：** https://wengji-banqiao-copilot.vercel.app/verify
 - **Repo：** https://github.com/changyuan123/wengji-banqiao-copilot
 
-## 怎麼用（白話）
+## 重點
 
-1. **店長**決定：今晚幾袋、每袋多少錢、幾點到幾點可取、幾點停止預約
-2. 從菜單**清楚勾選**會進袋的食材（寫進資料庫；客人看不到細項）
-3. 客人頁只顯示**模糊說明**（保留驚喜）→ 客人按「預約」
-4. 到店出示 QR；店長掃碼確認取袋，**當場收取袋價**
+- 袋數／價錢／時段由店長決定（數字可直接用鍵盤輸入）
+- 可同時上架多種袋子（貨架）；停賣只擋新預約，已預約不可取消
+- 店長清楚勾選菜單 → 寫進資料庫；客人只看自動模糊說明
+- 預約需留手機或 LINE
+- 客人頁不顯示店長後台／掃碼按鈕
+- 商家方案：**NT$299／3 個月**
 
-## 資料怎麼累積
+## 雲端
 
-店長每次上架都會把「清楚菜單品項」存起來，方便之後分析什麼常進袋、什麼常賣不完。  
-客人端只看模糊文案，不會洩漏完整清單。
-
-## 雲端優先
-
-服務在 **GitHub + Vercel**。正式營業建議在 Vercel 接上 Upstash Redis：
+建議在 Vercel 設定 Upstash Redis：
 
 ```
 UPSTASH_REDIS_REST_URL=
@@ -30,9 +27,3 @@ UPSTASH_REDIS_REST_TOKEN=
 MERCHANT_PIN=5919
 NEXT_PUBLIC_SITE_URL=https://wengji-banqiao-copilot.vercel.app
 ```
-
-## 防亂約（內建）
-
-- 一人一天最多約 2 袋
-- 手上還有未取的袋就不能再約
-- 連續約了不來會暫停幾天

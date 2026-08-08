@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { getItemsByIds, type MenuItem } from "@/lib/menu";
 
-/** 店長後台清楚記錄的袋內品項（給資料庫用，不直接秀給客人細項） */
+/** 店長後台清楚記錄的袋內品項（資料庫用；客人不看細項） */
 export type BagContentItem = {
   itemId: string;
   name: string;
@@ -9,33 +9,28 @@ export type BagContentItem = {
   price?: number;
 };
 
-/** 今晚一檔驚喜袋（由店長決定份數、價錢、時段） */
+/** 一檔驚喜袋（可同時上架多種＝貨架） */
 export type SurpriseBagOffer = {
   id: string;
+  storeId: string;
   storeName: string;
   createdAt: string;
-  /** 今晚共幾袋 */
   qty: number;
   reserved: number;
   pickedUp: number;
-  /** 袋價（到店付） */
   price: number;
-  /** 取餐開始／結束（台北 HH:mm） */
   pickupStart: string;
   pickupEnd: string;
-  /** 停止接受預約的時間（台北 HH:mm）；到點就不能再約 */
   salesStopAt: string;
-  /** 停止預約的絕對時間 */
   salesStopAtIso: string;
-  /** 客人看到的標題 */
+  /** 客人看到的標題（可當貨架上的袋名） */
   publicTitle: string;
-  /** 客人看到的模糊說明（驚喜感） */
+  /** 自動產生的模糊說明 */
   publicHint: string;
-  /** 店長勾選的清楚菜單（資料庫） */
   contents: BagContentItem[];
-  note?: string;
-  /** 這檔有效到（通常＝取餐結束） */
   expiresAt: string;
+  /** 店長手動停賣（已預約的仍可取，不能取消） */
+  salesClosed?: boolean;
 };
 
 export type BagReservation = {
@@ -43,6 +38,8 @@ export type BagReservation = {
   shortCode: string;
   bagId: string;
   guestId: string;
+  /** 客人聯絡方式（電話或 LINE） */
+  contact: string;
   status: "reserved" | "picked_up" | "expired";
   price: number;
   publicTitle: string;
@@ -61,14 +58,16 @@ type GuestGuard = {
   openReservationId?: string;
   missStreak: number;
   blockedUntil?: string;
+  lastContact?: string;
 };
 
 const DAILY_LIMIT = 2;
 const NOSHOW_LIMIT = 2;
 const NOSHOW_BLOCK_DAYS = 2;
+const MAX_SHELF = 12;
 
 type MemoryStore = {
-  latestBagId: string | null;
+  shelfIds: string[];
   bags: Map<string, SurpriseBagOffer>;
   reservations: Map<string, BagReservation>;
   codes: Map<string, string>;
@@ -80,7 +79,7 @@ const g = globalThis as unknown as { __wengjiBagMem?: MemoryStore };
 function mem(): MemoryStore {
   if (!g.__wengjiBagMem) {
     g.__wengjiBagMem = {
-      latestBagId: null,
+      shelfIds: [],
       bags: new Map(),
       reservations: new Map(),
       codes: new Map(),
@@ -152,7 +151,6 @@ function taipeiDayPlus(days: number, from = new Date()): string {
   return base.toISOString();
 }
 
-/** HH:mm → 今天台北該時刻的 ISO */
 export function taipeiTodayAt(hhmm: string, from = new Date()): string {
   const day = taipeiDayKey(from);
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
@@ -174,6 +172,13 @@ export function normalizeGuestId(raw: unknown): string | null {
   return id;
 }
 
+export function normalizeContact(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const c = raw.trim().replace(/\s+/g, " ").slice(0, 40);
+  if (c.length < 8) return null;
+  return c;
+}
+
 export function merchantPinOk(pin: string): boolean {
   const expected = (process.env.MERCHANT_PIN || "5919").trim();
   return pin.trim() === expected;
@@ -183,7 +188,6 @@ export function defaultMerchantPin(): string {
   return (process.env.MERCHANT_PIN || "5919").trim();
 }
 
-/** 依清楚菜單自動產生「模糊」客人文案（店長可再改） */
 export function buildBlurryHint(items: MenuItem[]): string {
   const tags = new Set<string>();
   for (const i of items) {
@@ -206,11 +210,13 @@ export function buildBlurryHint(items: MenuItem[]): string {
 export function summarizeBagPublic(bag: SurpriseBagOffer) {
   const remaining = Math.max(0, bag.qty - bag.reserved);
   const now = Date.now();
-  const stopMs = new Date(bag.salesStopAtIso).getTime();
   const expired = now > new Date(bag.expiresAt).getTime();
-  const salesOpen = !expired && now < stopMs && remaining > 0;
+  const stopMs = new Date(bag.salesStopAtIso).getTime();
+  const salesOpen =
+    !bag.salesClosed && !expired && now < stopMs && remaining > 0;
   return {
     id: bag.id,
+    storeId: bag.storeId,
     storeName: bag.storeName,
     publicTitle: bag.publicTitle,
     publicHint: bag.publicHint,
@@ -223,8 +229,8 @@ export function summarizeBagPublic(bag: SurpriseBagOffer) {
     pickupEnd: bag.pickupEnd,
     salesStopAt: bag.salesStopAt,
     salesOpen,
+    salesClosed: !!bag.salesClosed,
     expiresAt: bag.expiresAt,
-    /** 店長後台才看得到清楚清單 */
     contentsCount: bag.contents.length,
   };
 }
@@ -233,16 +239,35 @@ export function summarizeBagMerchant(bag: SurpriseBagOffer) {
   return {
     ...summarizeBagPublic(bag),
     contents: bag.contents,
-    note: bag.note,
     createdAt: bag.createdAt,
   };
 }
 
+async function loadShelfIds(): Promise<string[]> {
+  const raw = await redisGet("wengji:bag:shelf");
+  if (raw) {
+    try {
+      const ids = JSON.parse(raw) as string[];
+      if (Array.isArray(ids)) {
+        mem().shelfIds = ids.filter((x) => typeof x === "string");
+        return mem().shelfIds;
+      }
+    } catch {
+      /* fall */
+    }
+  }
+  return mem().shelfIds;
+}
+
+async function saveShelfIds(ids: string[]): Promise<void> {
+  const next = [...new Set(ids)].slice(0, MAX_SHELF);
+  mem().shelfIds = next;
+  await redisSet("wengji:bag:shelf", JSON.stringify(next));
+}
+
 async function saveBag(bag: SurpriseBagOffer): Promise<void> {
   mem().bags.set(bag.id, bag);
-  mem().latestBagId = bag.id;
   await redisSet(`wengji:bag:${bag.id}`, JSON.stringify(bag));
-  await redisSet("wengji:bag:latest", bag.id);
 }
 
 async function saveReservation(r: BagReservation): Promise<void> {
@@ -294,10 +319,22 @@ export async function loadBag(id: string): Promise<SurpriseBagOffer | null> {
   return mem().bags.get(id) ?? null;
 }
 
-export async function loadLatestBag(): Promise<SurpriseBagOffer | null> {
-  const id = (await redisGet("wengji:bag:latest")) || mem().latestBagId;
-  if (!id) return null;
-  return loadBag(id);
+/** 貨架：今晚仍有效或尚有未取預約相關的袋子（多種可並存） */
+export async function loadShelfBags(storeId?: string): Promise<SurpriseBagOffer[]> {
+  const ids = await loadShelfIds();
+  const bags: SurpriseBagOffer[] = [];
+  const day = taipeiDayKey();
+  for (const id of ids) {
+    const bag = await loadBag(id);
+    if (!bag) continue;
+    if (storeId && bag.storeId !== storeId) continue;
+    const createdDay = taipeiDayKey(new Date(bag.createdAt));
+    const stillToday = createdDay === day;
+    const notFullyDone =
+      Date.now() <= new Date(bag.expiresAt).getTime() + 6 * 60 * 60 * 1000;
+    if (stillToday || notFullyDone) bags.push(bag);
+  }
+  return bags;
 }
 
 export async function loadReservation(id: string): Promise<BagReservation | null> {
@@ -350,9 +387,8 @@ export type PublishBagInput = {
   pickupEnd: string;
   salesStopAt: string;
   publicTitle?: string;
-  publicHint?: string;
   itemIds: string[];
-  note?: string;
+  storeId: string;
   storeName: string;
 };
 
@@ -365,7 +401,7 @@ export async function publishSurpriseBag(
     throw new Error("袋數請填 1～99");
   }
   if (!Number.isFinite(price) || price < 1 || price > 9999) {
-    throw new Error("袋價請由店長決定（建議 1～9999 元）");
+    throw new Error("袋價請填 1～9999 元");
   }
 
   const items = getItemsByIds(input.itemIds);
@@ -382,15 +418,9 @@ export async function publishSurpriseBag(
     throw new Error("停止預約時間不能晚於取餐結束時間");
   }
 
-  const contents: BagContentItem[] = items.map((i) => ({
-    itemId: i.id,
-    name: i.name,
-    role: i.role,
-    price: i.price,
-  }));
-
   const bag: SurpriseBagOffer = {
     id: newId("bag"),
+    storeId: input.storeId,
     storeName: input.storeName,
     createdAt: new Date().toISOString(),
     qty,
@@ -401,15 +431,30 @@ export async function publishSurpriseBag(
     pickupEnd,
     salesStopAt,
     salesStopAtIso,
-    publicTitle:
-      input.publicTitle?.trim().slice(0, 40) || "今晚火鍋惜食驚喜袋",
-    publicHint:
-      input.publicHint?.trim().slice(0, 120) || buildBlurryHint(items),
-    contents,
-    note: input.note?.trim().slice(0, 80) || undefined,
+    publicTitle: input.publicTitle?.trim().slice(0, 40) || "今晚惜食驚喜袋",
+    publicHint: buildBlurryHint(items),
+    contents: items.map((i) => ({
+      itemId: i.id,
+      name: i.name,
+      role: i.role,
+      price: i.price,
+    })),
     expiresAt,
+    salesClosed: false,
   };
 
+  await saveBag(bag);
+  const shelf = await loadShelfIds();
+  await saveShelfIds([bag.id, ...shelf.filter((id) => id !== bag.id)]);
+  return bag;
+}
+
+/** 停賣某一檔（已預約不可取消，客人仍可取） */
+export async function closeBagSales(bagId: string): Promise<SurpriseBagOffer> {
+  const bag = await loadBag(bagId);
+  if (!bag) throw new Error("找不到這一檔驚喜袋");
+  bag.salesClosed = true;
+  bag.salesStopAtIso = new Date().toISOString();
   await saveBag(bag);
   return bag;
 }
@@ -437,8 +482,7 @@ async function assertGuestMayReserve(guestId: string): Promise<GuestGuard> {
     const open = await loadReservation(guest.openReservationId);
     if (open && open.status === "reserved") {
       const bag = await loadBag(open.bagId);
-      const expired =
-        !bag || Date.now() > new Date(bag.expiresAt).getTime();
+      const expired = !bag || Date.now() > new Date(bag.expiresAt).getTime();
       if (!expired) {
         throw new Error("你還有一袋沒取。請先到店取袋後，再預約下一袋。");
       }
@@ -451,7 +495,7 @@ async function assertGuestMayReserve(guestId: string): Promise<GuestGuard> {
         guest.missStreak = 0;
         await saveGuest(guest);
         throw new Error(
-          `連續預約卻沒來取，暫停 ${NOSHOW_BLOCK_DAYS} 天（到 ${formatTaipei(guest.blockedUntil)}）。名額留給會來的人。`,
+          `連續預約卻沒來取，暫停 ${NOSHOW_BLOCK_DAYS} 天（到 ${formatTaipei(guest.blockedUntil)}）。`,
         );
       }
       await saveGuest(guest);
@@ -467,22 +511,33 @@ async function assertGuestMayReserve(guestId: string): Promise<GuestGuard> {
   return guest;
 }
 
-export async function reserveBag(
-  guestIdRaw: unknown,
-): Promise<BagReservation> {
-  const guestId = normalizeGuestId(guestIdRaw);
+export async function reserveBag(input: {
+  guestId: unknown;
+  bagId: unknown;
+  contact: unknown;
+}): Promise<BagReservation> {
+  const guestId = normalizeGuestId(input.guestId);
   if (!guestId) throw new Error("請重新整理頁面後再預約一次");
 
+  const contact = normalizeContact(input.contact);
+  if (!contact) {
+    throw new Error("請留下可聯絡方式（手機或 LINE，至少 8 個字）");
+  }
+
+  const bagId = typeof input.bagId === "string" ? input.bagId.trim() : "";
+  if (!bagId) throw new Error("請選擇要預約的驚喜袋");
+
   const guest = await assertGuestMayReserve(guestId);
-  const bag = await loadLatestBag();
-  if (!bag) throw new Error("目前還沒有今晚的驚喜袋");
+  const bag = await loadBag(bagId);
+  if (!bag) throw new Error("找不到這一檔驚喜袋");
 
   const now = Date.now();
+  if (bag.salesClosed) throw new Error("這一檔已停止預約（已預約的仍可取袋）");
   if (now > new Date(bag.expiresAt).getTime()) {
-    throw new Error("今晚取餐時間已過，請明天再來");
+    throw new Error("取餐時間已過，請選其他袋子或明天再來");
   }
   if (now >= new Date(bag.salesStopAtIso).getTime()) {
-    throw new Error("店長已停止今晚預約，請下次早點來");
+    throw new Error("這一檔已停止預約，請選其他袋子");
   }
 
   if (hasCloudStore()) {
@@ -490,11 +545,11 @@ export async function reserveBag(
     const next = Number(await redisCommand(["INCR", key]));
     if (!Number.isFinite(next) || next > bag.qty) {
       await redisCommand(["DECR", key]);
-      throw new Error("今晚驚喜袋已經約滿了");
+      throw new Error("這一檔已經約滿了");
     }
     bag.reserved = Math.max(bag.reserved, next);
   } else {
-    if (bag.reserved >= bag.qty) throw new Error("今晚驚喜袋已經約滿了");
+    if (bag.reserved >= bag.qty) throw new Error("這一檔已經約滿了");
     bag.reserved += 1;
   }
   await saveBag(bag);
@@ -504,6 +559,7 @@ export async function reserveBag(
     shortCode: newShortCode(),
     bagId: bag.id,
     guestId,
+    contact,
     status: "reserved",
     price: bag.price,
     publicTitle: bag.publicTitle,
@@ -517,6 +573,7 @@ export async function reserveBag(
 
   guest.dailyReserves += 1;
   guest.openReservationId = reservation.id;
+  guest.lastContact = contact;
   await saveGuest(guest);
 
   return reservation;
@@ -532,15 +589,26 @@ export async function pickupReservation(
 }> {
   if (!merchantPinOk(pin)) throw new Error("店長密碼不正確");
 
-  const looksLikeCode = /^\d{6}$/.test(codeOrId.trim());
-  const reservation = looksLikeCode
-    ? await loadReservationByCode(codeOrId.trim())
-    : await loadReservation(codeOrId.trim());
+  const raw = codeOrId.trim();
+  let reservation: BagReservation | null = null;
 
-  if (!reservation) throw new Error("找不到這筆預約");
+  if (/^\d{6}$/.test(raw)) {
+    reservation = await loadReservationByCode(raw);
+  } else if (raw.startsWith("bres_")) {
+    reservation = await loadReservation(raw);
+  } else {
+    reservation = await loadReservation(raw);
+    if (!reservation && /^\d+$/.test(raw) && raw.length === 6) {
+      reservation = await loadReservationByCode(raw);
+    }
+  }
+
+  if (!reservation) {
+    throw new Error("找不到這筆預約。請確認是客人預約頁上的 6 碼，不要填店長密碼。");
+  }
 
   const bag = await loadBag(reservation.bagId);
-  if (!bag) throw new Error("對應的驚喜袋不存在");
+  if (!bag) throw new Error("對應的驚喜袋資料不見了，請稍後再試或接上雲端資料庫");
 
   if (Date.now() > new Date(bag.expiresAt).getTime()) {
     if (reservation.status === "reserved") {
@@ -552,6 +620,9 @@ export async function pickupReservation(
 
   if (reservation.status === "picked_up") {
     throw new Error("這袋已經取過了");
+  }
+  if (reservation.status === "expired") {
+    throw new Error("這筆預約已過期");
   }
 
   if (hasCloudStore()) {

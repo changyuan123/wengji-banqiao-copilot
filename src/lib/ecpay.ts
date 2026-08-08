@@ -7,7 +7,9 @@ export type EcpayConfig = {
   stage: boolean;
 };
 
-export const SUBSCRIPTION_AMOUNT = 999;
+export const SUBSCRIPTION_AMOUNT = 299;
+/** 方案涵蓋月數（一次付清） */
+export const SUBSCRIPTION_MONTHS = 3;
 export const SUB_COOKIE = "wengji_sub";
 
 export function getEcpayConfig(): EcpayConfig | null {

@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import {
   SUBSCRIPTION_AMOUNT,
+  SUBSCRIPTION_MONTHS,
   buildMerchantTradeNo,
   ecpayEndpoint,
   formatEcpayDate,
   generateCheckMacValue,
   getEcpayConfig,
 } from "@/lib/ecpay";
-import { store } from "@/data/store";
 
 export const runtime = "nodejs";
 
@@ -40,19 +40,13 @@ export async function POST() {
     MerchantTradeDate: formatEcpayDate(),
     PaymentType: "aio",
     TotalAmount: amount,
-    TradeDesc: `${store.fullName} AI助手月訂閱`,
-    ItemName: `翁記專屬AI助手月費 NT$${SUBSCRIPTION_AMOUNT}`,
+    TradeDesc: `惜食商家方案${SUBSCRIPTION_MONTHS}個月`,
+    ItemName: `惜食商家方案 ${SUBSCRIPTION_MONTHS}個月 NT$${SUBSCRIPTION_AMOUNT}`,
     ReturnURL: `${base}/api/ecpay/notify`,
     OrderResultURL: `${base}/api/ecpay/return`,
     ClientBackURL: `${base}/?subscribe=cancel`,
     ChoosePayment: "Credit",
     EncryptType: "1",
-    // 信用卡定期定額
-    PeriodAmount: amount,
-    PeriodType: "M",
-    Frequency: "1",
-    ExecTimes: "99",
-    PeriodReturnURL: `${base}/api/ecpay/period`,
   };
 
   params.CheckMacValue = generateCheckMacValue(params, cfg.hashKey, cfg.hashIv);

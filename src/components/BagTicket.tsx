@@ -13,6 +13,7 @@ type Reservation = {
   pickupStart: string;
   pickupEnd: string;
   storeName: string;
+  contact?: string;
   reservedAt: string;
   pickedUpAt?: string;
 };
@@ -94,6 +95,11 @@ export function BagTicket({ reservationId }: { reservationId: string }) {
           <p className="mt-3 text-[13px] font-semibold text-[#1a120f]">
             取餐時段 {reservation.pickupStart}–{reservation.pickupEnd}
           </p>
+          {reservation.contact && (
+            <p className="mt-2 text-[12px] text-[#6b5348]">
+              聯絡方式已留下（店長取袋時可核對）
+            </p>
+          )}
         </section>
 
         {reservation.status === "reserved" && qrUrl && (

@@ -26,12 +26,12 @@ export async function POST(request: Request) {
   const ok = params.RtnCode === "1";
   const res = NextResponse.redirect(`${base}/?paid=${ok ? "1" : "0"}`, 303);
   if (ok) {
-    res.cookies.set(SUB_COOKIE, mintSubscriptionCookie(31), {
+    res.cookies.set(SUB_COOKIE, mintSubscriptionCookie(93), {
       httpOnly: true,
       secure: true,
       sameSite: "lax",
       path: "/",
-      maxAge: 31 * 86400,
+      maxAge: 93 * 86400,
     });
   }
   return res;

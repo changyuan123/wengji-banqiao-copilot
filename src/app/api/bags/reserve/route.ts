@@ -5,11 +5,14 @@ import { reserveBag } from "@/lib/surprise-bag";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** 客人預約一袋（到店再付款） */
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   try {
-    const reservation = await reserveBag(body.guestId);
+    const reservation = await reserveBag({
+      guestId: body.guestId,
+      bagId: body.bagId,
+      contact: body.contact,
+    });
     const origin = siteOrigin(request);
     const bagUrl = `${origin}/bag/${reservation.id}`;
     return NextResponse.json({
