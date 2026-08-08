@@ -107,9 +107,9 @@ export function ScanRedeemApp() {
 
   const redeem = useCallback(
     async (raw: string) => {
-      const code = extractCouponRef(raw);
+      const code = extractPickupRef(raw);
       if (!code) {
-        showToast("讀不到折價券，請再試一次");
+        showToast("讀不到預約碼，請再試一次");
         return;
       }
       if (busyRef.current) return;
@@ -117,24 +117,49 @@ export function ScanRedeemApp() {
       setBusy(true);
       setLastOk(null);
       try {
-        const res = await fetch("/api/coupons/redeem", {
+        let res = await fetch("/api/bags/pickup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code, pin: pinRef.current }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "核銷失敗");
-        setLastOk({
-          message: data.message,
-          remainingAfterRedeem: data.remainingAfterRedeem,
-          coupon: data.coupon,
-        });
-        showToast("核銷成功");
+        let data = await res.json();
+        if (!res.ok) {
+          const bagMiss =
+            typeof data.error === "string" &&
+            (data.error.includes("找不到") || data.error.includes("不存在"));
+          if (!bagMiss) throw new Error(data.error || "取袋失敗");
+
+          res = await fetch("/api/coupons/redeem", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code, pin: pinRef.current }),
+          });
+          data = await res.json();
+          if (!res.ok) throw new Error(data.error || "取袋失敗");
+          setLastOk({
+            message: data.message,
+            remainingAfterRedeem: data.remainingAfterRedeem,
+            coupon: {
+              itemName: data.coupon?.itemName || "折價券",
+              shortCode: data.coupon?.shortCode || "",
+            },
+          });
+        } else {
+          setLastOk({
+            message: data.message,
+            remainingAfterRedeem: data.remainingAfterPickup,
+            coupon: {
+              itemName: data.reservation?.publicTitle || "驚喜袋",
+              shortCode: data.reservation?.shortCode || "",
+            },
+          });
+        }
+        showToast("取袋成功 · 請向客人收款");
         if (typeof navigator !== "undefined" && navigator.vibrate) {
           navigator.vibrate(80);
         }
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "核銷失敗");
+        showToast(e instanceof Error ? e.message : "取袋失敗");
       } finally {
         busyRef.current = false;
         setBusy(false);
@@ -299,9 +324,9 @@ export function ScanRedeemApp() {
         }}
       >
         <p className="text-[11px] tracking-[0.18em] text-white/75">店長專用</p>
-        <h1 className="mt-2 font-display text-[1.55rem] font-bold">掃碼核銷折價券</h1>
+        <h1 className="mt-2 font-display text-[1.55rem] font-bold">掃碼取袋</h1>
         <p className="mt-2 text-sm text-white/85">
-          客人出示手機 QR → 你一掃就扣一份庫存。也可手打 6 碼。
+          客人出示預約 QR → 你一掃確認取袋，並當場收取袋價。也可手打 6 碼。
         </p>
       </header>
 
@@ -325,7 +350,7 @@ export function ScanRedeemApp() {
           className="rounded-2xl bg-white p-4 shadow-sm"
           style={{ border: "1px solid var(--wj-line)" }}
         >
-          <h2 className="text-base font-bold">① 用相機掃 QR</h2>
+          <h2 className="text-base font-bold">① 用相機掃取袋 QR</h2>
           <p className="mt-2 text-[13px] text-[#6b5348]">
             請用手機瀏覽器打開此頁，並允許使用相機。若掃不到，改用手打下方 6 碼即可。
           </p>
@@ -377,7 +402,7 @@ export function ScanRedeemApp() {
           className="rounded-2xl bg-white p-4 shadow-sm"
           style={{ border: "1px solid var(--wj-line)" }}
         >
-          <h2 className="text-base font-bold">② 手打 6 碼券號</h2>
+          <h2 className="text-base font-bold">② 手打 6 碼預約號</h2>
           <input
             value={manual}
             onChange={(e) => setManual(e.target.value.replace(/\D/g, "").slice(0, 6))}
@@ -391,7 +416,7 @@ export function ScanRedeemApp() {
             onClick={() => void redeem(manual)}
             className="mt-3 w-full rounded-xl bg-[#8B0000] py-3.5 text-[15px] font-bold text-white disabled:opacity-50"
           >
-            {busy ? "核銷中…" : "確認核銷"}
+            {busy ? "確認中…" : "確認取袋並收款"}
           </button>
         </section>
 
@@ -400,10 +425,10 @@ export function ScanRedeemApp() {
             className="rounded-2xl p-4 text-white shadow-sm"
             style={{ background: "linear-gradient(135deg, #1f7a4c, #14603a)" }}
           >
-            <p className="text-[12px] text-white/80">剛剛核銷成功</p>
+            <p className="text-[12px] text-white/80">剛剛取袋成功</p>
             <p className="mt-1 text-xl font-bold">{lastOk.coupon.itemName}</p>
             <p className="mt-2 text-sm">{lastOk.message}</p>
-            <p className="mt-2 text-2xl font-bold">還剩 {lastOk.remainingAfterRedeem} 份</p>
+            <p className="mt-2 text-2xl font-bold">還可出 {lastOk.remainingAfterRedeem} 袋</p>
           </section>
         )}
 
@@ -434,19 +459,21 @@ export function ScanRedeemApp() {
   );
 }
 
-function extractCouponRef(raw: string): string | null {
+function extractPickupRef(raw: string): string | null {
   const text = raw.trim();
   if (/^\d{6}$/.test(text)) return text;
   try {
     const u = new URL(text);
     const parts = u.pathname.split("/").filter(Boolean);
-    const idx = parts.indexOf("coupon");
-    if (idx >= 0 && parts[idx + 1]) return parts[idx + 1];
+    for (const key of ["bag", "coupon"]) {
+      const idx = parts.indexOf(key);
+      if (idx >= 0 && parts[idx + 1]) return parts[idx + 1];
+    }
   } catch {
     /* not url */
   }
-  const m = text.match(/coupon\/([a-zA-Z0-9_]+)/);
+  const m = text.match(/(?:bag|coupon)\/([a-zA-Z0-9_]+)/);
   if (m?.[1]) return m[1];
-  if (text.startsWith("cpn_")) return text;
+  if (text.startsWith("bres_") || text.startsWith("cpn_")) return text;
   return null;
 }

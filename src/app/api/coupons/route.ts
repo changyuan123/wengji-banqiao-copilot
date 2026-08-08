@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const coupon = await claimCoupon(itemId);
+    const coupon = await claimCoupon(itemId, body.guestId);
     const origin = siteOrigin(request);
     const couponUrl = `${origin}/coupon/${coupon.id}`;
     return NextResponse.json({
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       coupon,
       couponUrl,
       qrUrl: `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(couponUrl)}`,
-      message: "領取成功！請出示給店長掃描。",
+      message: "領取成功！請今天到店出示給店長掃描，沒用掉就會過期。",
     });
   } catch (e) {
     return NextResponse.json(

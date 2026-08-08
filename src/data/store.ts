@@ -4,7 +4,7 @@ export const store = {
   fullName: "翁記麻辣鍋－板橋店",
   title: "翁記惜食｜商家後台",
   headerTitle: "翁記惜食｜商家後台",
-  subtitle: "發布今日特價網頁 · 板橋篤行路三段28號",
+  subtitle: "上架今晚驚喜袋 · 板橋篤行路三段28號",
   address: "新北市板橋區篤行路三段28號",
   addressHint: "玉平巷口",
   phone: "(02) 8675-5919",

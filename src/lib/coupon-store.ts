@@ -30,13 +30,40 @@ export type CouponRecord = {
   status: "claimed" | "redeemed" | "expired";
   claimedAt: string;
   redeemedAt?: string;
+  /** 同一支手機／瀏覽器的訪客代號（防亂領） */
+  guestId?: string;
 };
+
+/** 訪客防亂領狀態 */
+export type GuestGuard = {
+  id: string;
+  /** 台北日期 YYYY-MM-DD */
+  dailyKey: string;
+  /** 當天已領幾張 */
+  dailyClaims: number;
+  /** 目前還沒用掉的券（有的話先去店裡用） */
+  openCouponId?: string;
+  /** 連續「領了卻過期沒用」幾次 */
+  missStreak: number;
+  /** 暫停領券到這個時間（ISO） */
+  blockedUntil?: string;
+};
+
+/** 一人一天最多領幾張 */
+export const CLAIM_DAILY_LIMIT = 2;
+/** 手上未用券最多幾張（超過就不能再領） */
+export const CLAIM_OPEN_LIMIT = 1;
+/** 連續幾次領了不來就暫停 */
+export const NOSHOW_STREAK_LIMIT = 2;
+/** 暫停幾天（台北日曆天） */
+export const NOSHOW_BLOCK_DAYS = 2;
 
 type MemoryStore = {
   latestDealId: string | null;
   deals: Map<string, StockDeal>;
   coupons: Map<string, CouponRecord>;
   codes: Map<string, string>;
+  guests: Map<string, GuestGuard>;
 };
 
 const g = globalThis as unknown as { __wengjiCouponMem?: MemoryStore };
@@ -48,7 +75,11 @@ function mem(): MemoryStore {
       deals: new Map(),
       coupons: new Map(),
       codes: new Map(),
+      guests: new Map(),
     };
+  }
+  if (!g.__wengjiCouponMem.guests) {
+    g.__wengjiCouponMem.guests = new Map();
   }
   return g.__wengjiCouponMem;
 }
@@ -99,18 +130,142 @@ function newShortCode(): string {
   return String(n).padStart(6, "0");
 }
 
-/** 台北時間當天 23:59:59 */
-export function endOfTaipeiDay(from = new Date()): string {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
+/** 台北日期 YYYY-MM-DD */
+export function taipeiDayKey(from = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Taipei",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  });
-  const day = fmt.format(from); // YYYY-MM-DD
+  }).format(from);
+}
+
+/** 台北時間當天 23:59:59 */
+export function endOfTaipeiDay(from = new Date()): string {
+  const day = taipeiDayKey(from);
   // 台北 23:59:59 → 先當 UTC+8
   const expires = new Date(`${day}T23:59:59+08:00`);
   return expires.toISOString();
+}
+
+/** 台北日曆往後加 N 天的 00:00（用來算暫停到哪一天） */
+function taipeiDayPlus(days: number, from = new Date()): string {
+  const key = taipeiDayKey(from);
+  const base = new Date(`${key}T00:00:00+08:00`);
+  base.setTime(base.getTime() + days * 24 * 60 * 60 * 1000);
+  return base.toISOString();
+}
+
+export function normalizeGuestId(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const id = raw.trim().slice(0, 80);
+  if (!/^g_[a-zA-Z0-9_-]{8,64}$/.test(id)) return null;
+  return id;
+}
+
+function emptyGuest(id: string): GuestGuard {
+  return {
+    id,
+    dailyKey: taipeiDayKey(),
+    dailyClaims: 0,
+    missStreak: 0,
+  };
+}
+
+async function saveGuest(guest: GuestGuard): Promise<void> {
+  mem().guests.set(guest.id, guest);
+  await redisSet(`wengji:guest:${guest.id}`, JSON.stringify(guest));
+}
+
+async function loadGuest(id: string): Promise<GuestGuard> {
+  const raw = await redisGet(`wengji:guest:${id}`);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as GuestGuard;
+      if (parsed?.id) {
+        mem().guests.set(parsed.id, parsed);
+        return parsed;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  return mem().guests.get(id) ?? emptyGuest(id);
+}
+
+function formatTaipeiDateTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("zh-TW", {
+      timeZone: "Asia/Taipei",
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return "稍後";
+  }
+}
+
+/**
+ * 領券前檢查：一天上限、手上還有未用券、領了不來暫停
+ */
+async function assertGuestMayClaim(guestId: string): Promise<GuestGuard> {
+  const guest = await loadGuest(guestId);
+  const today = taipeiDayKey();
+
+  if (guest.blockedUntil && Date.now() < new Date(guest.blockedUntil).getTime()) {
+    throw new Error(
+      `你先前領了券卻沒來用，暫時不能領。請等到 ${formatTaipeiDateTime(guest.blockedUntil)} 之後再試，把機會留給真正要來的人。`,
+    );
+  }
+  if (guest.blockedUntil && Date.now() >= new Date(guest.blockedUntil).getTime()) {
+    guest.blockedUntil = undefined;
+    guest.missStreak = 0;
+  }
+
+  if (guest.dailyKey !== today) {
+    guest.dailyKey = today;
+    guest.dailyClaims = 0;
+  }
+
+  // 手上還有未用券？過期了就算一次「沒來」
+  if (guest.openCouponId) {
+    const open = await loadCoupon(guest.openCouponId);
+    if (open && open.status === "claimed") {
+      const deal = await loadDeal(open.dealId);
+      const expired = !deal || isExpired(deal, open);
+      if (!expired) {
+        throw new Error(
+          "你還有一張沒用完的折價券。請先到店給店長掃描後，再領下一張。",
+        );
+      }
+      open.status = "expired";
+      await saveCoupon(open);
+      guest.openCouponId = undefined;
+      guest.missStreak += 1;
+      if (guest.missStreak >= NOSHOW_STREAK_LIMIT) {
+        guest.blockedUntil = taipeiDayPlus(NOSHOW_BLOCK_DAYS);
+        guest.missStreak = 0;
+        await saveGuest(guest);
+        throw new Error(
+          `連續領了卻沒來店裡，暫停領券 ${NOSHOW_BLOCK_DAYS} 天（到 ${formatTaipeiDateTime(guest.blockedUntil)}）。惜食名額要留給會來的人。`,
+        );
+      }
+      await saveGuest(guest);
+    } else {
+      guest.openCouponId = undefined;
+    }
+  }
+
+  if (guest.dailyClaims >= CLAIM_DAILY_LIMIT) {
+    throw new Error(
+      `今天已經領過 ${CLAIM_DAILY_LIMIT} 張了。明天再來，把機會留給其他人。`,
+    );
+  }
+
+  return guest;
 }
 
 export function merchantPinOk(pin: string): boolean {
@@ -245,7 +400,17 @@ function isExpired(deal: StockDeal, coupon?: CouponRecord): boolean {
   return false;
 }
 
-export async function claimCoupon(itemId: string): Promise<CouponRecord> {
+export async function claimCoupon(
+  itemId: string,
+  guestIdRaw?: string,
+): Promise<CouponRecord> {
+  const guestId = normalizeGuestId(guestIdRaw);
+  if (!guestId) {
+    throw new Error("請重新整理頁面後再領一次");
+  }
+
+  const guest = await assertGuestMayClaim(guestId);
+
   const deal = await loadLatestDeal();
   if (!deal) throw new Error("目前沒有可領的惜食特價");
   if (isExpired(deal)) throw new Error("今日特價已截止，請明天再來");
@@ -279,8 +444,14 @@ export async function claimCoupon(itemId: string): Promise<CouponRecord> {
     dealPrice: line.dealPrice,
     status: "claimed",
     claimedAt: new Date().toISOString(),
+    guestId,
   };
   await saveCoupon(coupon);
+
+  guest.dailyClaims += 1;
+  guest.openCouponId = coupon.id;
+  await saveGuest(guest);
+
   return coupon;
 }
 
@@ -330,6 +501,17 @@ export async function redeemCoupon(
   coupon.status = "redeemed";
   coupon.redeemedAt = new Date().toISOString();
   await saveCoupon(coupon);
+
+  // 到店核銷成功 → 清掉「未用券」，並重置沒來次數
+  if (coupon.guestId) {
+    const guest = await loadGuest(coupon.guestId);
+    if (guest.openCouponId === coupon.id) {
+      guest.openCouponId = undefined;
+    }
+    guest.missStreak = 0;
+    guest.blockedUntil = undefined;
+    await saveGuest(guest);
+  }
 
   const line = deal.lines.find((l) => l.itemId === coupon.itemId);
   if (line) {

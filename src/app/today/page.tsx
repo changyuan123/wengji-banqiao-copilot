@@ -9,8 +9,8 @@ export const runtime = "nodejs";
 export const revalidate = 0;
 
 export const metadata: Metadata = {
-  title: `今日惜食特價｜${store.name}`,
-  description: "翁記麻辣鍋板橋店今日限時特價。領取折價券到店核銷。",
+  title: `今晚惜食驚喜袋｜${store.name}`,
+  description: "翁記麻辣鍋板橋店今晚惜食驚喜袋。預約後到店取袋付款。",
 };
 
 export default async function TodayPage() {
@@ -27,15 +27,15 @@ export default async function TodayPage() {
           background: "linear-gradient(165deg, #8B0000 0%, #5c0000 55%, #3d0000 100%)",
         }}
       >
-        <p className="text-[11px] tracking-[0.18em] text-white/75">今日特價 · 限量折價券</p>
+        <p className="text-[11px] tracking-[0.18em] text-white/75">今晚惜食 · 驚喜袋</p>
         <h1
           className="mt-2 font-display text-[1.5rem] font-bold leading-snug"
           style={{ fontFamily: "var(--font-noto-serif), serif" }}
         >
-          翁記今晚惜食特價
+          翁記今晚惜食驚喜袋
         </h1>
         <p className="mt-2 text-sm text-white/85">
-          先線上領券，到店給店長掃 QR。領完就沒了。
+          先預約一袋 → 在時段內到店取袋並付款。內容保留一點驚喜。
         </p>
       </header>
 
@@ -68,7 +68,7 @@ export default async function TodayPage() {
             className="rounded-xl bg-white py-3 font-medium text-[#8B0000]"
             style={{ border: "1px solid var(--wj-line)" }}
           >
-            店長掃碼核銷
+            店長掃碼取袋
           </Link>
         </div>
       </div>

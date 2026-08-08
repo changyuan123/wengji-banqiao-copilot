@@ -4,24 +4,33 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TodayDealCard, type TodayDealCardData } from "@/components/TodayDealCard";
 
-type StockLine = {
-  itemId: string;
-  name: string;
-  price?: number;
-  dealPrice: number | null;
+type PublicBag = {
+  id: string;
+  storeName: string;
+  publicTitle: string;
+  publicHint: string;
+  price: number;
   qty: number;
-  claimed: number;
-  redeemed: number;
-  remainingToClaim: number;
+  remaining: number;
+  pickupStart: string;
+  pickupEnd: string;
+  salesStopAt: string;
+  salesOpen: boolean;
 };
 
-type StockDeal = {
-  id: string;
-  note?: string;
-  expiresAt: string;
-  lines: StockLine[];
-  totals: { qty: number; claimed: number; redeemed: number };
-};
+function getGuestId(): string {
+  const key = "wj_guest_id";
+  let id = window.localStorage.getItem(key);
+  if (!id || !/^g_/.test(id)) {
+    const rand =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID().replace(/-/g, "")
+        : `${Date.now()}${Math.random().toString(16).slice(2)}`;
+    id = `g_${rand.slice(0, 24)}`;
+    window.localStorage.setItem(key, id);
+  }
+  return id;
+}
 
 export function TodayGuestBoard({
   boardDeal,
@@ -31,114 +40,99 @@ export function TodayGuestBoard({
   shareUrl: string;
 }) {
   const router = useRouter();
-  const [stock, setStock] = useState<StockDeal | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [bag, setBag] = useState<PublicBag | null>(null);
+  const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/stock")
+    fetch("/api/bags")
       .then((r) => r.json())
-      .then((d: { deal?: StockDeal | null }) => setStock(d.deal ?? null))
+      .then((d: { bag?: PublicBag | null }) => setBag(d.bag ?? null))
       .catch(() => undefined);
   }, []);
 
-  async function claim(itemId: string) {
-    setBusyId(itemId);
+  async function reserve() {
+    setBusy(true);
     setToast(null);
     try {
-      const res = await fetch("/api/coupons", {
+      const res = await fetch("/api/bags/reserve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId }),
+        body: JSON.stringify({ guestId: getGuestId() }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "領取失敗");
-      if (data.couponUrl) {
-        router.push(`/coupon/${data.coupon.id}`);
+      if (!res.ok) throw new Error(data.error || "預約失敗");
+      if (data.reservation?.id) {
+        router.push(`/bag/${data.reservation.id}`);
         return;
       }
-      setToast("領取成功");
+      setToast("預約成功");
     } catch (e) {
-      setToast(e instanceof Error ? e.message : "領取失敗");
+      setToast(e instanceof Error ? e.message : "預約失敗");
     } finally {
-      setBusyId(null);
-      // refresh counts
-      fetch("/api/stock")
+      setBusy(false);
+      fetch("/api/bags")
         .then((r) => r.json())
-        .then((d: { deal?: StockDeal | null }) => setStock(d.deal ?? null))
+        .then((d: { bag?: PublicBag | null }) => setBag(d.bag ?? null))
         .catch(() => undefined);
     }
   }
 
   return (
     <div className="flex flex-col gap-4">
-      {stock && (
+      {bag && (
         <section
           className="rounded-2xl bg-white p-4 shadow-sm"
           style={{ border: "1px solid var(--wj-line)" }}
         >
-          <h2 className="text-lg font-bold text-[#1a120f]">限量折價券 · 先領再來</h2>
-          <p className="mt-1 text-[13px] text-[#6b5348]">
-            點「領取」會得到專屬 QR。到店給店長掃描才算用掉一份。
+          <p className="text-[11px] font-semibold tracking-[0.14em] text-[#8B0000]">
+            今晚惜食驚喜袋
           </p>
-          <ul className="mt-3 space-y-3">
-            {stock.lines.map((line) => {
-              const soldOut = line.remainingToClaim <= 0;
-              return (
-                <li
-                  key={line.itemId}
-                  className="rounded-xl bg-[#fff8f4] p-3"
-                  style={{ border: "1px solid var(--wj-line)" }}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold text-[#1a120f]">{line.name}</p>
-                      <p className="mt-0.5 text-[13px] text-[#8B0000]">
-                        {line.dealPrice != null ? `特惠 $${line.dealPrice}` : "特惠"}
-                        {line.price != null && (
-                          <span className="ml-1 text-[11px] text-[#6b5348] line-through">
-                            ${line.price}
-                          </span>
-                        )}
-                      </p>
-                      <p className="mt-1 text-[12px] text-[#6b5348]">
-                        還可領 {line.remainingToClaim}／共 {line.qty} 份
-                        {line.redeemed > 0 ? ` · 已核銷 ${line.redeemed}` : ""}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={soldOut || busyId === line.itemId}
-                      onClick={() => claim(line.itemId)}
-                      className="shrink-0 rounded-xl bg-[#8B0000] px-3 py-2.5 text-[13px] font-bold text-white disabled:bg-[#b5a39a]"
-                    >
-                      {soldOut
-                        ? "已領完"
-                        : busyId === line.itemId
-                          ? "領取中…"
-                          : "領取折價券"}
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-          {stock.note && (
-            <p className="mt-3 text-[13px] text-[#6b5348]">備註：{stock.note}</p>
-          )}
+          <h2 className="mt-1 text-xl font-bold text-[#1a120f]">{bag.publicTitle}</h2>
+          <p className="mt-1 text-[13px] text-[#6b5348]">{bag.storeName}</p>
+
+          <p className="mt-3 text-3xl font-bold text-[#8B0000]">
+            ${bag.price}
+            <span className="ml-2 text-sm font-medium text-[#6b5348]">到店付款</span>
+          </p>
+
+          <p className="mt-3 text-[14px] leading-relaxed text-[#1a120f]">{bag.publicHint}</p>
+
+          <p className="mt-3 text-[13px] font-semibold text-[#1a120f]">
+            取餐 {bag.pickupStart}–{bag.pickupEnd}
+          </p>
+          <p className="mt-1 text-[12px] text-[#6b5348]">
+            {bag.salesOpen
+              ? `還可預約 ${bag.remaining}／共 ${bag.qty} 袋 · ${bag.salesStopAt} 停止預約`
+              : bag.remaining <= 0
+                ? "今晚已約滿"
+                : "今晚已停止預約或已結束"}
+          </p>
+
+          <button
+            type="button"
+            disabled={!bag.salesOpen || busy}
+            onClick={() => void reserve()}
+            className="mt-4 w-full rounded-xl bg-[#8B0000] py-3.5 text-[15px] font-bold text-white disabled:bg-[#b5a39a]"
+          >
+            {busy ? "預約中…" : bag.salesOpen ? "預約今晚這一袋" : "目前無法預約"}
+          </button>
+          <p className="mt-2 text-center text-[11px] text-[#6b5348]">
+            預約後請在時段內到店出示 QR，並支付袋價。內容保留驚喜。
+          </p>
         </section>
       )}
 
       {boardDeal && <TodayDealCard deal={boardDeal} shareUrl={shareUrl} />}
 
-      {!stock && !boardDeal && (
+      {!bag && !boardDeal && (
         <section
           className="rounded-2xl bg-white p-5 shadow-sm"
           style={{ border: "1px solid var(--wj-line)" }}
         >
-          <h2 className="text-base font-semibold text-[#1a120f]">目前還沒有今日特價</h2>
+          <h2 className="text-base font-semibold text-[#1a120f]">目前還沒有今晚驚喜袋</h2>
           <p className="mt-2 text-sm leading-relaxed text-[#6b5348]">
-            請向店家索取最新連結，或等店長在後台釋出限量份數。
+            請向店家索取最新連結，或等店長在後台上架今晚袋子。
           </p>
         </section>
       )}

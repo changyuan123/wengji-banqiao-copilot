@@ -1,30 +1,28 @@
-# 翁記麻辣鍋板橋店｜今日惜食特價（限量折價券）
+# 翁記麻辣鍋板橋店｜今晚惜食驚喜袋
 
-**不用 LINE。** 店長設定今日剩幾份 → 客人領折價券 → 店長掃碼核銷扣庫存。
+類似 **Too Good To Go**：店長上架今晚驚喜袋 → 客人預約 → 到店掃碼取袋並付款。
 
 - **商家後台：** https://wengji-banqiao-copilot.vercel.app
-- **客人今日頁：** https://wengji-banqiao-copilot.vercel.app/today
-- **店長掃碼核銷：** https://wengji-banqiao-copilot.vercel.app/scan
-- **驗證流程說明（給非工程背景）：** https://wengji-banqiao-copilot.vercel.app/verify
+- **客人今晚頁：** https://wengji-banqiao-copilot.vercel.app/today
+- **店長掃碼取袋：** https://wengji-banqiao-copilot.vercel.app/scan
+- **驗證流程說明：** https://wengji-banqiao-copilot.vercel.app/verify
 - **Repo：** https://github.com/changyuan123/wengji-banqiao-copilot
 
 ## 怎麼用（白話）
 
-1. 店長打開商家後台，一次可選多種菜並設定「剩幾份」（例如雪花牛 3 份、水蓮 2 份）
-2. 按「釋出限量折價券」
-3. 客人打開今日頁，按「領取折價券」，得到專屬 QR／6 碼
-4. 到店出示；店長打開掃碼頁開相機掃描（或手打 6 碼）→ 核銷成功，份數減少
+1. **店長**決定：今晚幾袋、每袋多少錢、幾點到幾點可取、幾點停止預約
+2. 從菜單**清楚勾選**會進袋的食材（寫進資料庫；客人看不到細項）
+3. 客人頁只顯示**模糊說明**（保留驚喜）→ 客人按「預約」
+4. 到店出示 QR；店長掃碼確認取袋，**當場收取袋價**
 
-相機掃碼支援常見手機瀏覽器；若鏡頭暫時無法辨識，用手打 6 碼即可完成核銷。
+## 資料怎麼累積
+
+店長每次上架都會把「清楚菜單品項」存起來，方便之後分析什麼常進袋、什麼常賣不完。  
+客人端只看模糊文案，不會洩漏完整清單。
 
 ## 雲端優先
 
-服務在 **GitHub + Vercel**，不依賴店內電腦。  
-禁止在約 8GB 文書機本機跑 `npm install` / `dev` / `build`。
-
-## 可選：雲端資料庫（Upstash Redis）
-
-讓庫存／核銷記錄在 Vercel 多台伺服器之間都一致。免費申請 [Upstash Redis](https://upstash.com/) 後，在 Vercel 填：
+服務在 **GitHub + Vercel**。正式營業建議在 Vercel 接上 Upstash Redis：
 
 ```
 UPSTASH_REDIS_REST_URL=
@@ -33,13 +31,8 @@ MERCHANT_PIN=5919
 NEXT_PUBLIC_SITE_URL=https://wengji-banqiao-copilot.vercel.app
 ```
 
-不填也能先在示範環境走完流程；正式長期營業建議填上。
+## 防亂約（內建）
 
-## 其他環境變數
-
-| 變數 | 說明 |
-|------|------|
-| `NEXT_PUBLIC_SITE_URL` | 正式網域（產生完整分享連結） |
-| `MERCHANT_PIN` | 店長核銷密碼（預設 5919） |
-| `GROQ_API_KEY` 等 | 可選；文案預覽 |
-| `ECPAY_*` / `SUBSCRIPTION_SECRET` | 訂閱（可選） |
+- 一人一天最多約 2 袋
+- 手上還有未取的袋就不能再約
+- 連續約了不來會暫停幾天

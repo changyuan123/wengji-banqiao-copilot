@@ -4,32 +4,63 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { store } from "@/data/store";
 import type { WeatherPayload } from "@/lib/weather";
 
-type GenState = "idle" | "loading" | "done" | "error";
 type MenuBtn = { id: string; name: string; price?: number; popular?: boolean };
 type MenuGroup = { category: string; items: MenuBtn[] };
+
+type BagSummary = {
+  id: string;
+  publicTitle: string;
+  publicHint: string;
+  price: number;
+  qty: number;
+  remaining: number;
+  reserved: number;
+  pickedUp: number;
+  pickupStart: string;
+  pickupEnd: string;
+  salesStopAt: string;
+  salesOpen: boolean;
+  contents?: { itemId: string; name: string }[];
+};
+
+function getGuestId(): string {
+  const key = "wj_guest_id";
+  let id = window.localStorage.getItem(key);
+  if (!id || !/^g_/.test(id)) {
+    const rand =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID().replace(/-/g, "")
+        : `${Date.now()}${Math.random().toString(16).slice(2)}`;
+    id = `g_${rand.slice(0, 24)}`;
+    window.localStorage.setItem(key, id);
+  }
+  return id;
+}
 
 export function CopilotApp() {
   const [weather, setWeather] = useState<WeatherPayload | null>(null);
   const [groups, setGroups] = useState<MenuGroup[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [extraNote, setExtraNote] = useState("");
   const [activeCat, setActiveCat] = useState(0);
-  const [copyText, setCopyText] = useState("");
-  const [genState, setGenState] = useState<GenState>("idle");
-  const [matchedLabel, setMatchedLabel] = useState<string | null>(null);
+  const [qty, setQty] = useState(5);
+  const [price, setPrice] = useState(199);
+  const [pickupStart, setPickupStart] = useState("17:30");
+  const [pickupEnd, setPickupEnd] = useState("20:00");
+  const [salesStopAt, setSalesStopAt] = useState("19:30");
+  const [publicTitle, setPublicTitle] = useState("今晚火鍋惜食驚喜袋");
+  const [publicHint, setPublicHint] = useState("");
+  const [note, setNote] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [scanUrl, setScanUrl] = useState<string | null>(null);
+  const [published, setPublished] = useState<BagSummary | null>(null);
+  const [cloudStore, setCloudStore] = useState<boolean | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [payBusy, setPayBusy] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [paidBanner, setPaidBanner] = useState<string | null>(null);
-  const [publishBusy, setPublishBusy] = useState(false);
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
-  const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [canonicalUrl, setCanonicalUrl] = useState<string | null>(null);
-  const [scanUrl, setScanUrl] = useState<string | null>(null);
-  const [qtyById, setQtyById] = useState<Record<string, number>>({});
-  const [stockSummary, setStockSummary] = useState<string | null>(null);
-  const [cloudStore, setCloudStore] = useState<boolean | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -75,9 +106,12 @@ export function CopilotApp() {
       .then((d: { subscribed?: boolean }) => setSubscribed(!!d.subscribed))
       .catch(() => undefined);
 
-    fetch("/api/stock")
+    fetch("/api/bags?merchant=1")
       .then((r) => r.json())
-      .then((d: { cloudStore?: boolean }) => setCloudStore(!!d.cloudStore))
+      .then((d: { bag?: BagSummary | null; cloudStore?: boolean }) => {
+        setCloudStore(!!d.cloudStore);
+        if (d.bag) setPublished(d.bag);
+      })
       .catch(() => setCloudStore(false));
 
     const params = new URLSearchParams(window.location.search);
@@ -87,129 +121,56 @@ export function CopilotApp() {
     } else if (params.get("paid") === "0") {
       setPaidBanner("付款未完成或已取消，可稍後再試。");
     }
+
+    // 預先產生訪客 id（給之後測試用）
+    getGuestId();
   }, []);
 
-  const selectedItems = useMemo(() => {
-    const map = new Map<string, MenuBtn>();
-    for (const g of groups) for (const it of g.items) map.set(it.id, it);
-    return selectedIds.map((id) => map.get(id)).filter(Boolean) as MenuBtn[];
-  }, [groups, selectedIds]);
-
   function toggleItem(id: string) {
-    setSelectedIds((prev) => {
-      if (prev.includes(id)) {
-        setQtyById((q) => {
-          const next = { ...q };
-          delete next[id];
-          return next;
-        });
-        return prev.filter((x) => x !== id);
-      }
-      setQtyById((q) => ({ ...q, [id]: q[id] ?? 3 }));
-      const next = [...prev, id];
-      if (next.length === 10) {
-        showToast("選很多也可以，特價頁會全部列出");
-      }
-      return next;
-    });
-    setShareUrl(null);
-    setQrUrl(null);
-    setScanUrl(null);
-    setStockSummary(null);
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
   }
 
-  function setQty(id: string, qty: number) {
-    const n = Math.min(99, Math.max(1, Math.floor(qty) || 1));
-    setQtyById((q) => ({ ...q, [id]: n }));
-  }
-
-  async function handleGenerate() {
-    if (selectedIds.length === 0) {
-      showToast("請先點選今天要特價的品項");
-      return;
-    }
-    setGenState("loading");
-    setCopyText("");
-    setMatchedLabel(null);
-    setShareUrl(null);
-    setQrUrl(null);
-    try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          itemIds: selectedIds,
-          situation: extraNote.trim(),
-          weather,
-        }),
-      });
-      const data = (await res.json()) as {
-        text?: string;
-        error?: string;
-        matched?: { name: string }[];
-      };
-      if (!res.ok || !data.text) throw new Error(data.error || "生成失敗");
-      setCopyText(data.text);
-      setMatchedLabel(
-        data.matched?.length
-          ? `已選：${data.matched.map((m) => m.name).join("、")}`
-          : null,
-      );
-      setGenState("done");
-      window.setTimeout(() => {
-        document.getElementById("preview-panel")?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }, 50);
-    } catch {
-      setGenState("error");
-      showToast("生成失敗，請再試一次");
-    }
-  }
+  const selectedNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const g of groups) for (const it of g.items) map.set(it.id, it.name);
+    return selectedIds.map((id) => map.get(id)).filter(Boolean) as string[];
+  }, [groups, selectedIds]);
 
   async function handlePublish() {
     if (selectedIds.length === 0) {
-      showToast("請先選擇品項並設定份數");
+      showToast("請先從菜單勾選今晚會進袋的食材（資料庫用）");
       return;
     }
     setPublishBusy(true);
     try {
-      const res = await fetch("/api/stock", {
+      const res = await fetch("/api/bags", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          note: extraNote.trim(),
-          items: selectedIds.map((itemId) => ({
-            itemId,
-            qty: qtyById[itemId] ?? 1,
-          })),
+          qty,
+          price,
+          pickupStart,
+          pickupEnd,
+          salesStopAt,
+          publicTitle,
+          publicHint: publicHint.trim() || undefined,
+          itemIds: selectedIds,
+          note: note.trim() || undefined,
         }),
       });
-      const data = (await res.json()) as {
-        error?: string;
-        guestUrl?: string;
-        qrUrl?: string;
-        scanUrl?: string;
-        message?: string;
-        cloudStore?: boolean;
-        deal?: {
-          lines?: { name: string; qty: number }[];
-          totals?: { qty: number };
-        };
-      };
-      if (!res.ok) throw new Error(data.error || "發布失敗");
-      if (typeof data.cloudStore === "boolean") setCloudStore(data.cloudStore);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "上架失敗");
+      setPublished(data.bag ?? null);
       setShareUrl(data.guestUrl || "/today");
       setQrUrl(data.qrUrl || null);
-      setCanonicalUrl(data.guestUrl || "/today");
       setScanUrl(data.scanUrl || "/scan");
-      if (data.deal?.lines?.length) {
-        setStockSummary(
-          data.deal.lines.map((l) => `${l.name} × ${l.qty}`).join("、"),
-        );
+      if (typeof data.cloudStore === "boolean") setCloudStore(data.cloudStore);
+      if (!publicHint.trim() && data.suggestedHint) {
+        setPublicHint(data.suggestedHint);
       }
-      showToast(data.message || "已釋出限量折價券");
+      showToast(data.message || "已上架今晚驚喜袋");
       window.setTimeout(() => {
         document.getElementById("publish-panel")?.scrollIntoView({
           behavior: "smooth",
@@ -217,7 +178,7 @@ export function CopilotApp() {
         });
       }, 50);
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "發布失敗");
+      showToast(e instanceof Error ? e.message : "上架失敗");
     } finally {
       setPublishBusy(false);
     }
@@ -227,19 +188,9 @@ export function CopilotApp() {
     if (!shareUrl) return;
     try {
       await navigator.clipboard.writeText(shareUrl);
-      showToast("特價連結已複製，傳給客人即可");
+      showToast("客人連結已複製");
     } catch {
       showToast(shareUrl);
-    }
-  }
-
-  async function handleCopyText() {
-    if (!copyText) return;
-    try {
-      await navigator.clipboard.writeText(copyText);
-      showToast("文案已複製");
-    } catch {
-      showToast("複製失敗");
     }
   }
 
@@ -281,63 +232,51 @@ export function CopilotApp() {
   const currentGroup = groups[activeCat];
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col pb-32">
+    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col">
       <header
-        className="relative overflow-hidden px-5 pb-5 pt-7 text-white anim-rise"
+        className="px-5 pb-5 pt-8 text-white"
         style={{
           background: "linear-gradient(165deg, #8B0000 0%, #5c0000 55%, #3d0000 100%)",
         }}
       >
-        <p className="text-[11px] tracking-[0.18em] text-white/75">商家後台 · 今日特價黑板</p>
-        <h1
-          className="mt-2 font-display text-[1.45rem] leading-snug font-bold"
-          style={{ fontFamily: "var(--font-noto-serif), var(--font-display)" }}
-        >
-          {store.headerTitle}
-        </h1>
-        <p className="mt-2 text-sm text-white/85">{store.subtitle}</p>
-        <p className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-[12px] leading-relaxed text-white/90">
-          選菜＋設定<strong className="font-semibold">剩幾份</strong>→ 客人領折價券 →
-          店長<strong className="font-semibold">掃碼核銷</strong>扣庫存。
+        <p className="text-[11px] tracking-[0.18em] text-white/75">商家後台 · 今晚驚喜袋</p>
+        <h1 className="mt-2 font-display text-[1.55rem] font-bold">{store.headerTitle}</h1>
+        <p className="mt-2 text-sm text-white/85">
+          店長決定袋數、價錢、取餐時段 → 客人預約 → 到店掃碼取袋並付款。
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[12px]">
           <a
             href="/today"
-            className="inline-block rounded-lg bg-white/15 px-3 py-1.5 text-[12px] font-semibold ring-1 ring-white/30"
+            className="rounded-xl bg-white/15 py-2.5 font-semibold text-white backdrop-blur"
           >
-            客人今日頁
+            客人頁
           </a>
           <a
             href="/scan"
-            className="inline-block rounded-lg bg-white px-3 py-1.5 text-[12px] font-bold text-[#8B0000]"
+            className="rounded-xl bg-white/15 py-2.5 font-semibold text-white backdrop-blur"
           >
-            店長掃碼核銷
+            掃碼取袋
           </a>
           <a
             href="/verify"
-            className="inline-block rounded-lg bg-white/15 px-3 py-1.5 text-[12px] font-semibold ring-1 ring-white/30"
+            className="rounded-xl bg-white/15 py-2.5 font-semibold text-white backdrop-blur"
           >
-            驗證流程說明
+            驗證說明
           </a>
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col gap-4 px-4 pt-4">
+      <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-10">
         {paidBanner && (
-          <div
-            className="rounded-xl border border-[#eadcd4] bg-white px-3 py-2 text-sm text-[#5c0000]"
-            role="status"
-          >
+          <div className="rounded-xl border border-[#eadcd4] bg-white px-3 py-2 text-sm text-[#5c0000]">
             {paidBanner}
           </div>
         )}
 
         {cloudStore === false && (
-          <div
-            className="rounded-xl border border-[#f0d9a8] bg-[#fff8e8] px-3 py-2 text-[13px] leading-relaxed text-[#6b5348]"
-            role="status"
-          >
-            提醒：還沒接上雲端記帳本（Upstash）。現在可以試流程，但過一陣子或換一支手機再看，有時會找不到剛剛釋出的份數。正式給客人用前，請在 Vercel 填上 Redis。
+          <div className="rounded-xl border border-[#f0d9a8] bg-[#fff8e8] px-3 py-2 text-[13px] leading-relaxed text-[#6b5348]">
+            提醒：還沒接雲端記帳本（Upstash）。可以先試流程；正式營業建議在 Vercel 接上
+            Redis，資料才穩。
           </div>
         )}
 
@@ -346,293 +285,266 @@ export function CopilotApp() {
           style={{ border: "1px solid var(--wj-line)" }}
         >
           <div className="flex items-center gap-3">
-            <span className="text-3xl" aria-hidden>
-              {weather?.icon ?? "⛅"}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-[#6b5348]">板橋天氣</p>
-              <p className="truncate text-base font-semibold text-[#1a120f]">{weatherLabel}</p>
+            <span className="text-2xl">{weather?.icon ?? "⛅"}</span>
+            <div>
+              <p className="text-sm font-semibold text-[#1a120f]">板橋天氣</p>
+              <p className="text-[12px] text-[#6b5348]">{weatherLabel}</p>
             </div>
           </div>
         </section>
 
-        <section>
-          <div className="mb-2 flex items-end justify-between gap-2 px-1">
-            <div>
-              <h2 className="text-sm font-semibold text-[#1a120f]">① 點選品項並設定份數</h2>
-              <p className="mt-0.5 text-[11px] text-[#6b5348]">
-                可一次選多種菜（雪花牛、水蓮、蝦餃都行）· 已選 {selectedIds.length}
-              </p>
-            </div>
-            {selectedIds.length > 0 && (
-              <button
-                type="button"
-                className="text-[11px] font-medium text-[#8B0000]"
-                onClick={() => {
-                  setSelectedIds([]);
-                  setQtyById({});
-                  setShareUrl(null);
-                  setStockSummary(null);
-                }}
-              >
-                清空
-              </button>
-            )}
+        <section
+          className="rounded-2xl bg-white p-4 shadow-sm"
+          style={{ border: "1px solid var(--wj-line)" }}
+        >
+          <h2 className="text-base font-bold">① 今晚袋數與價錢（你決定）</h2>
+          <p className="mt-1 text-[12px] text-[#6b5348]">
+            剩多少做多少袋、賣多少錢，都由店長決定。
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <label className="text-[12px] font-semibold text-[#6b5348]">
+              今晚幾袋
+              <input
+                type="number"
+                min={1}
+                max={99}
+                value={qty}
+                onChange={(e) => setQty(Math.min(99, Math.max(1, Number(e.target.value) || 1)))}
+                className="mt-1 w-full rounded-xl border border-[#eadcd4] px-3 py-2.5 text-[16px] font-bold"
+              />
+            </label>
+            <label className="text-[12px] font-semibold text-[#6b5348]">
+              每袋售價（元）
+              <input
+                type="number"
+                min={1}
+                max={9999}
+                value={price}
+                onChange={(e) =>
+                  setPrice(Math.min(9999, Math.max(1, Number(e.target.value) || 1)))
+                }
+                className="mt-1 w-full rounded-xl border border-[#eadcd4] px-3 py-2.5 text-[16px] font-bold"
+              />
+            </label>
           </div>
+        </section>
 
-          {selectedItems.length > 0 && (
-            <div className="mb-3 space-y-2 rounded-2xl bg-white p-3 shadow-sm" style={{ border: "1px solid var(--wj-line)" }}>
-              <p className="text-[12px] font-semibold text-[#6b5348]">今日釋出份數</p>
-              {selectedItems.map((it) => (
-                <div key={it.id} className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-[#1a120f]">
-                    {it.name}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="h-9 w-9 rounded-lg bg-[#fff8f4] text-lg font-bold"
-                      onClick={() => setQty(it.id, (qtyById[it.id] ?? 3) - 1)}
-                    >
-                      −
-                    </button>
-                    <input
-                      type="number"
-                      min={1}
-                      max={99}
-                      value={qtyById[it.id] ?? 3}
-                      onChange={(e) => setQty(it.id, Number(e.target.value))}
-                      className="w-14 rounded-lg border border-[#eadcd4] py-1.5 text-center text-[16px] font-bold"
-                    />
-                    <button
-                      type="button"
-                      className="h-9 w-9 rounded-lg bg-[#fff8f4] text-lg font-bold"
-                      onClick={() => setQty(it.id, (qtyById[it.id] ?? 3) + 1)}
-                    >
-                      ＋
-                    </button>
-                    <span className="text-[12px] text-[#6b5348]">份</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+        <section
+          className="rounded-2xl bg-white p-4 shadow-sm"
+          style={{ border: "1px solid var(--wj-line)" }}
+        >
+          <h2 className="text-base font-bold">② 取餐時段與停止預約（你決定）</h2>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <label className="text-[11px] font-semibold text-[#6b5348]">
+              開始取
+              <input
+                type="time"
+                value={pickupStart}
+                onChange={(e) => setPickupStart(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-[#eadcd4] px-2 py-2 text-[14px]"
+              />
+            </label>
+            <label className="text-[11px] font-semibold text-[#6b5348]">
+              結束取
+              <input
+                type="time"
+                value={pickupEnd}
+                onChange={(e) => setPickupEnd(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-[#eadcd4] px-2 py-2 text-[14px]"
+              />
+            </label>
+            <label className="text-[11px] font-semibold text-[#6b5348]">
+              停止預約
+              <input
+                type="time"
+                value={salesStopAt}
+                onChange={(e) => setSalesStopAt(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-[#eadcd4] px-2 py-2 text-[14px]"
+              />
+            </label>
+          </div>
+          <p className="mt-2 text-[11px] text-[#6b5348]">
+            過了「停止預約」就不能再約；取餐結束後預約失效。
+          </p>
+        </section>
+
+        <section
+          className="rounded-2xl bg-white p-4 shadow-sm"
+          style={{ border: "1px solid var(--wj-line)" }}
+        >
+          <h2 className="text-base font-bold">③ 清楚勾選袋內食材（資料庫）</h2>
+          <p className="mt-1 text-[12px] text-[#6b5348]">
+            這裡要選清楚，方便之後分析剩什麼。客人頁不會看到細項菜名。
+          </p>
+          {selectedNames.length > 0 && (
+            <p className="mt-2 rounded-lg bg-[#fff8f4] px-2 py-2 text-[12px] text-[#1a120f]">
+              已選：{selectedNames.join("、")}
+            </p>
           )}
-
-          <div
-            className="rounded-2xl bg-white shadow-sm"
-            style={{ border: "1px solid var(--wj-line)" }}
-          >
-            <div className="flex gap-1 overflow-x-auto border-b border-[#eadcd4] px-2 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {groups.map((g, i) => (
+          <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1">
+            {groups.map((g, i) => (
+              <button
+                key={g.category}
+                type="button"
+                onClick={() => setActiveCat(i)}
+                className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${
+                  activeCat === i
+                    ? "bg-[#8B0000] text-white"
+                    : "bg-[#fff8f4] text-[#6b5348]"
+                }`}
+              >
+                {g.category}
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {(currentGroup?.items ?? []).map((it) => {
+              const on = selectedIds.includes(it.id);
+              return (
                 <button
-                  key={g.category}
+                  key={it.id}
                   type="button"
-                  onClick={() => setActiveCat(i)}
-                  className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${
-                    activeCat === i
-                      ? "bg-[#8B0000] text-white"
-                      : "bg-[#fff8f4] text-[#6b5348]"
+                  onClick={() => toggleItem(it.id)}
+                  className={`min-h-[52px] rounded-xl px-2.5 py-2 text-left text-[13px] font-medium ${
+                    on
+                      ? "bg-[#8B0000] text-white ring-2 ring-[#5c0000]"
+                      : "bg-[#fff8f4] text-[#1a120f] ring-1 ring-[#eadcd4]"
                   }`}
                 >
-                  {g.category}
+                  {it.name}
+                  <span className="mt-0.5 block text-[11px] opacity-80">
+                    {it.price != null ? `$${it.price}` : "時價"}
+                  </span>
                 </button>
-              ))}
-            </div>
-            <div className="grid max-h-[42vh] grid-cols-2 gap-2 overflow-y-auto p-3">
-              {(currentGroup?.items ?? []).map((it) => {
-                const on = selectedIds.includes(it.id);
-                return (
-                  <button
-                    key={it.id}
-                    type="button"
-                    onClick={() => toggleItem(it.id)}
-                    className={`min-h-[52px] rounded-xl px-2.5 py-2 text-left text-[13px] font-medium transition active:scale-[0.98] ${
-                      on
-                        ? "bg-[#8B0000] text-white ring-2 ring-[#5c0000]"
-                        : "bg-[#fff8f4] text-[#1a120f] ring-1 ring-[#eadcd4]"
-                    }`}
-                  >
-                    <span className="block leading-snug">{it.name}</span>
-                    <span
-                      className={`mt-0.5 block text-[11px] ${on ? "text-white/80" : "text-[#6b5348]"}`}
-                    >
-                      {it.price != null ? `$${it.price}` : "時價"}
-                      {it.popular ? " · 人氣" : ""}
-                    </span>
-                  </button>
-                );
-              })}
-              {!currentGroup && (
-                <p className="col-span-2 py-6 text-center text-sm text-[#6b5348]">菜單載入中…</p>
-              )}
-            </div>
+              );
+            })}
           </div>
         </section>
 
-        <section>
-          <h2 className="mb-1 px-1 text-sm font-semibold text-[#1a120f]">② 補充（可留空）</h2>
+        <section
+          className="rounded-2xl bg-white p-4 shadow-sm"
+          style={{ border: "1px solid var(--wj-line)" }}
+        >
+          <h2 className="text-base font-bold">④ 客人看到的「模糊」說明</h2>
+          <p className="mt-1 text-[12px] text-[#6b5348]">
+            留白也可：系統會依你勾的菜自動寫模糊版，保留驚喜感。
+          </p>
           <input
-            value={extraNote}
-            onChange={(e) => setExtraNote(e.target.value)}
-            placeholder="例如：今天下大雨、數量不多…"
-            className="w-full rounded-2xl border border-[#eadcd4] bg-white px-3 py-3 text-[15px] outline-none placeholder:text-[#a89084]"
+            value={publicTitle}
+            onChange={(e) => setPublicTitle(e.target.value)}
+            className="mt-3 w-full rounded-xl border border-[#eadcd4] px-3 py-2.5 text-[15px]"
+            placeholder="今晚火鍋惜食驚喜袋"
+          />
+          <textarea
+            value={publicHint}
+            onChange={(e) => setPublicHint(e.target.value)}
+            rows={3}
+            placeholder="例如：今晚隨機搭配精選肉類、菇蔬等（實際以現場為準）"
+            className="mt-2 w-full rounded-xl border border-[#eadcd4] px-3 py-2.5 text-[14px]"
+          />
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            className="mt-2 w-full rounded-xl border border-[#eadcd4] px-3 py-2.5 text-[14px]"
+            placeholder="內部備註（客人看不到，可留空）"
           />
         </section>
 
-        <div className="grid gap-2">
-          <button
-            type="button"
-            onClick={handlePublish}
-            disabled={publishBusy || selectedIds.length === 0}
-            className="rounded-2xl px-4 py-4 text-[15px] font-bold text-white shadow-md transition active:scale-[0.98] disabled:opacity-50"
-            style={{ background: "linear-gradient(180deg, #b22222 0%, #8B0000 100%)" }}
-          >
-            {publishBusy ? "釋出中…" : "③ 釋出限量折價券（主按鈕）"}
-          </button>
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={genState === "loading"}
-            className="rounded-2xl border border-[#eadcd4] bg-white px-4 py-3 text-[13px] font-semibold text-[#1a120f] disabled:opacity-50"
-          >
-            {genState === "loading" ? "產生文案中…" : "只預覽文案（不發布）"}
-          </button>
-        </div>
+        <button
+          type="button"
+          disabled={publishBusy}
+          onClick={() => void handlePublish()}
+          className="w-full rounded-2xl bg-[#8B0000] py-4 text-[16px] font-bold text-white disabled:opacity-60"
+        >
+          {publishBusy ? "上架中…" : "⑤ 上架今晚驚喜袋（主按鈕）"}
+        </button>
 
-        {(shareUrl || qrUrl) && (
+        {(shareUrl || published) && (
           <section
             id="publish-panel"
             className="rounded-2xl bg-white p-4 shadow-sm"
             style={{ border: "1px solid var(--wj-line)" }}
           >
-            <h2 className="text-sm font-semibold text-[#1a120f]">已釋出限量折價券</h2>
-            {stockSummary && (
-              <p className="mt-1 text-[13px] font-medium text-[#8B0000]">{stockSummary}</p>
-            )}
-            <p className="mt-1 text-[12px] leading-relaxed text-[#6b5348]">
-              把下面連結／QR 給客人領券。客人到店後，你到「掃碼核銷」掃他們的券。
-            </p>
-            {qrUrl && (
-              <div className="mt-3 flex justify-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrUrl} alt="今日特價 QR" width={200} height={200} className="rounded-lg" />
+            <h2 className="text-base font-bold text-[#1f7a4c]">已上架今晚驚喜袋</h2>
+            {published && (
+              <div className="mt-2 space-y-1 text-[13px] text-[#1a120f]">
+                <p>
+                  {published.publicTitle} · ${published.price} · 共 {published.qty}{" "}
+                  袋（還可約 {published.remaining}）
+                </p>
+                <p className="text-[#6b5348]">
+                  取餐 {published.pickupStart}–{published.pickupEnd} · 停止預約{" "}
+                  {published.salesStopAt}
+                </p>
+                <p className="text-[#6b5348]">{published.publicHint}</p>
+                {published.contents && published.contents.length > 0 && (
+                  <p className="rounded-lg bg-[#fff8f4] px-2 py-2 text-[12px]">
+                    資料庫記錄：{published.contents.map((c) => c.name).join("、")}
+                  </p>
+                )}
               </div>
             )}
-            <p className="mt-2 break-all rounded-xl bg-[#fff8f4] p-2 text-[11px] text-[#1a120f]">
-              {shareUrl}
-            </p>
+            {qrUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={qrUrl} alt="客人頁 QR" className="mx-auto mt-3 h-[160px] w-[160px]" />
+            )}
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={copyShareUrl}
-                className="rounded-xl bg-[#8B0000] py-3 text-xs font-bold text-white"
+                onClick={() => void copyShareUrl()}
+                className="rounded-xl bg-[#8B0000] py-3 text-[13px] font-bold text-white"
               >
-                複製今日頁連結
+                複製客人連結
               </button>
               <a
-                href={shareUrl || "/today"}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-xl border border-[#eadcd4] py-3 text-center text-xs font-semibold"
+                href={scanUrl || "/scan"}
+                className="rounded-xl border border-[#eadcd4] py-3 text-center text-[13px] font-bold text-[#8B0000]"
               >
-                打開客人頁
+                去掃碼取袋
               </a>
             </div>
-            <a
-              href={scanUrl || "/scan"}
-              className="mt-2 block rounded-xl py-3 text-center text-sm font-bold text-white"
-              style={{ background: "linear-gradient(180deg, #1f7a4c, #14603a)" }}
-            >
-              前往店長掃碼核銷
-            </a>
-            {canonicalUrl && (
-              <p className="mt-2 text-[11px] text-[#6b5348]">
-                驗證步驟：{" "}
-                <a className="font-medium text-[#8B0000]" href="/verify">
-                  /verify
-                </a>
-              </p>
-            )}
           </section>
         )}
 
-        {(copyText || genState === "loading") && (
-          <section
-            id="preview-panel"
-            className="rounded-2xl bg-white p-4 shadow-sm"
-            style={{ border: "1px solid var(--wj-line)" }}
-          >
-            {matchedLabel && (
-              <p className="mb-2 text-[11px] text-[#6b5348]">{matchedLabel}</p>
-            )}
-            <h2 className="mb-2 text-sm font-semibold">文案預覽</h2>
-            <pre className="max-h-[220px] overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-[#fff8f4] p-3 text-[13px] leading-relaxed text-[#1a120f]">
-              {genState === "loading" ? "產生中…" : copyText}
-            </pre>
-            <button
-              type="button"
-              onClick={handleCopyText}
-              disabled={!copyText}
-              className="mt-3 w-full rounded-xl border border-[#eadcd4] py-3 text-xs font-semibold disabled:opacity-40"
-            >
-              複製文案文字
-            </button>
-          </section>
-        )}
-      </main>
-
-      <div
-        className="fixed bottom-0 left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 border-t border-[#eadcd4] bg-white/95 px-4 py-3 backdrop-blur"
-        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
-      >
         <button
           type="button"
           onClick={() => setPayOpen(true)}
           className="w-full rounded-xl px-3 py-3 text-left"
           style={{ background: "linear-gradient(90deg, #fff5f0, #ffe8dc)" }}
         >
-          <p className="text-[13px] font-bold text-[#8B0000]">
+          <span className="text-sm font-semibold text-[#5c0000]">
             {subscribed
               ? "已訂閱商家後台"
               : `訂閱商家後台 · NT$ ${store.subscriptionPrice}/月`}
-          </p>
-          <p className="mt-0.5 text-[11px] text-[#6b5348]">
-            雲端運作 · 手機即可 · 特價走免費網頁不靠 LINE
-          </p>
+          </span>
         </button>
-      </div>
+      </main>
 
       {payOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 pb-6 sm:items-center"
-          role="dialog"
-          aria-modal
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-4"
           onClick={() => !payBusy && setPayOpen(false)}
         >
           <div
-            className="w-full max-w-[400px] rounded-2xl bg-white p-5 shadow-xl"
+            className="w-full max-w-[400px] rounded-2xl bg-white p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold text-[#1a120f]">訂閱商家後台</h3>
-            <p className="mt-2 text-sm leading-relaxed text-[#6b5348]">
-              每月 NT${store.subscriptionPrice}。點菜單發布今日特價頁；客人用連結／QR
-              查看與轉傳，不經 LINE 計費。
+            <h3 className="text-lg font-bold">訂閱商家後台</h3>
+            <p className="mt-2 text-sm text-[#6b5348]">
+              每月 NT${store.subscriptionPrice}。上架驚喜袋、客人預約取袋。
             </p>
-            <div className="mt-5 flex gap-2">
+            <div className="mt-4 grid grid-cols-2 gap-2">
               <button
                 type="button"
-                className="flex-1 rounded-xl border border-[#eadcd4] py-3 text-sm"
-                disabled={payBusy}
+                className="rounded-xl border border-[#eadcd4] py-3 font-semibold"
                 onClick={() => setPayOpen(false)}
               >
                 稍後
               </button>
               <button
                 type="button"
-                className="flex-[1.4] rounded-xl py-3 text-sm font-bold text-white disabled:opacity-70"
-                style={{ background: "#8B0000" }}
-                disabled={payBusy}
-                onClick={handleCheckout}
+                className="rounded-xl bg-[#8B0000] py-3 font-bold text-white"
+                onClick={() => void handleCheckout()}
               >
                 {payBusy ? "導向綠界…" : "前往綠界付款"}
               </button>
@@ -642,10 +554,7 @@ export function CopilotApp() {
       )}
 
       {toast && (
-        <div
-          className="anim-toast fixed bottom-28 left-1/2 z-50 w-[min(92%,400px)] -translate-x-1/2 rounded-xl bg-[#1a120f] px-4 py-3 text-center text-sm text-white shadow-lg"
-          role="status"
-        >
+        <div className="anim-toast fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-[#1a120f] px-4 py-2 text-sm text-white">
           {toast}
         </div>
       )}
