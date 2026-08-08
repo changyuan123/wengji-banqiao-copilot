@@ -26,6 +26,9 @@ export function CopilotApp() {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [canonicalUrl, setCanonicalUrl] = useState<string | null>(null);
+  const [scanUrl, setScanUrl] = useState<string | null>(null);
+  const [qtyById, setQtyById] = useState<Record<string, number>>({});
+  const [stockSummary, setStockSummary] = useState<string | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -88,7 +91,15 @@ export function CopilotApp() {
 
   function toggleItem(id: string) {
     setSelectedIds((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.includes(id)) {
+        setQtyById((q) => {
+          const next = { ...q };
+          delete next[id];
+          return next;
+        });
+        return prev.filter((x) => x !== id);
+      }
+      setQtyById((q) => ({ ...q, [id]: q[id] ?? 3 }));
       const next = [...prev, id];
       if (next.length === 10) {
         showToast("選很多也可以，特價頁會全部列出");
@@ -97,6 +108,13 @@ export function CopilotApp() {
     });
     setShareUrl(null);
     setQrUrl(null);
+    setScanUrl(null);
+    setStockSummary(null);
+  }
+
+  function setQty(id: string, qty: number) {
+    const n = Math.min(99, Math.max(1, Math.floor(qty) || 1));
+    setQtyById((q) => ({ ...q, [id]: n }));
   }
 
   async function handleGenerate() {
@@ -146,36 +164,44 @@ export function CopilotApp() {
 
   async function handlePublish() {
     if (selectedIds.length === 0) {
-      showToast("請先選擇品項");
+      showToast("請先選擇品項並設定份數");
       return;
     }
     setPublishBusy(true);
     try {
-      const res = await fetch("/api/today", {
+      const res = await fetch("/api/stock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          itemIds: selectedIds,
           note: extraNote.trim(),
+          items: selectedIds.map((itemId) => ({
+            itemId,
+            qty: qtyById[itemId] ?? 1,
+          })),
         }),
       });
       const data = (await res.json()) as {
         error?: string;
-        shareUrl?: string;
+        guestUrl?: string;
         qrUrl?: string;
-        canonicalUrl?: string;
-        deal?: { text?: string };
+        scanUrl?: string;
         message?: string;
+        deal?: {
+          lines?: { name: string; qty: number }[];
+          totals?: { qty: number };
+        };
       };
       if (!res.ok) throw new Error(data.error || "發布失敗");
-      setShareUrl(data.shareUrl || null);
+      setShareUrl(data.guestUrl || "/today");
       setQrUrl(data.qrUrl || null);
-      setCanonicalUrl(data.canonicalUrl || null);
-      if (data.deal?.text) {
-        setCopyText(data.deal.text);
-        setGenState("done");
+      setCanonicalUrl(data.guestUrl || "/today");
+      setScanUrl(data.scanUrl || "/scan");
+      if (data.deal?.lines?.length) {
+        setStockSummary(
+          data.deal.lines.map((l) => `${l.name} × ${l.qty}`).join("、"),
+        );
       }
-      showToast(data.message || "已發布到今日特價頁");
+      showToast(data.message || "已釋出限量折價券");
       window.setTimeout(() => {
         document.getElementById("publish-panel")?.scrollIntoView({
           behavior: "smooth",
@@ -263,16 +289,29 @@ export function CopilotApp() {
         </h1>
         <p className="mt-2 text-sm text-white/85">{store.subtitle}</p>
         <p className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-[12px] leading-relaxed text-white/90">
-          點菜 → 發布到<strong className="font-semibold">今日特價網頁</strong>
-          。客人掃 QR 或開連結就能看、能轉傳。
-          <strong className="font-semibold">不用 LINE、不按則數收費。</strong>
+          選菜＋設定<strong className="font-semibold">剩幾份</strong>→ 客人領折價券 →
+          店長<strong className="font-semibold">掃碼核銷</strong>扣庫存。
         </p>
-        <a
-          href="/today"
-          className="mt-3 inline-block rounded-lg bg-white/15 px-3 py-1.5 text-[12px] font-semibold ring-1 ring-white/30"
-        >
-          預覽客人看到的今日頁 →
-        </a>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <a
+            href="/today"
+            className="inline-block rounded-lg bg-white/15 px-3 py-1.5 text-[12px] font-semibold ring-1 ring-white/30"
+          >
+            客人今日頁
+          </a>
+          <a
+            href="/scan"
+            className="inline-block rounded-lg bg-white px-3 py-1.5 text-[12px] font-bold text-[#8B0000]"
+          >
+            店長掃碼核銷
+          </a>
+          <a
+            href="/verify"
+            className="inline-block rounded-lg bg-white/15 px-3 py-1.5 text-[12px] font-semibold ring-1 ring-white/30"
+          >
+            驗證流程說明
+          </a>
+        </div>
       </header>
 
       <main className="flex flex-1 flex-col gap-4 px-4 pt-4">
@@ -303,9 +342,9 @@ export function CopilotApp() {
         <section>
           <div className="mb-2 flex items-end justify-between gap-2 px-1">
             <div>
-              <h2 className="text-sm font-semibold text-[#1a120f]">① 點選今日特價品</h2>
+              <h2 className="text-sm font-semibold text-[#1a120f]">① 點選品項並設定份數</h2>
               <p className="mt-0.5 text-[11px] text-[#6b5348]">
-                選幾個寫幾個 · 已選 {selectedIds.length}
+                例如雪花牛剩 3 份就填 3 · 已選 {selectedIds.length}
               </p>
             </div>
             {selectedIds.length > 0 && (
@@ -314,7 +353,9 @@ export function CopilotApp() {
                 className="text-[11px] font-medium text-[#8B0000]"
                 onClick={() => {
                   setSelectedIds([]);
+                  setQtyById({});
                   setShareUrl(null);
+                  setStockSummary(null);
                 }}
               >
                 清空
@@ -323,15 +364,39 @@ export function CopilotApp() {
           </div>
 
           {selectedItems.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-1.5 px-1">
+            <div className="mb-3 space-y-2 rounded-2xl bg-white p-3 shadow-sm" style={{ border: "1px solid var(--wj-line)" }}>
+              <p className="text-[12px] font-semibold text-[#6b5348]">今日釋出份數</p>
               {selectedItems.map((it) => (
-                <span
-                  key={it.id}
-                  className="rounded-full bg-[#8B0000] px-2.5 py-1 text-[11px] font-semibold text-white"
-                >
-                  {it.name}
-                  {it.price != null ? ` $${it.price}` : ""}
-                </span>
+                <div key={it.id} className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-[#1a120f]">
+                    {it.name}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="h-9 w-9 rounded-lg bg-[#fff8f4] text-lg font-bold"
+                      onClick={() => setQty(it.id, (qtyById[it.id] ?? 3) - 1)}
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={qtyById[it.id] ?? 3}
+                      onChange={(e) => setQty(it.id, Number(e.target.value))}
+                      className="w-14 rounded-lg border border-[#eadcd4] py-1.5 text-center text-[16px] font-bold"
+                    />
+                    <button
+                      type="button"
+                      className="h-9 w-9 rounded-lg bg-[#fff8f4] text-lg font-bold"
+                      onClick={() => setQty(it.id, (qtyById[it.id] ?? 3) + 1)}
+                    >
+                      ＋
+                    </button>
+                    <span className="text-[12px] text-[#6b5348]">份</span>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -405,7 +470,7 @@ export function CopilotApp() {
             className="rounded-2xl px-4 py-4 text-[15px] font-bold text-white shadow-md transition active:scale-[0.98] disabled:opacity-50"
             style={{ background: "linear-gradient(180deg, #b22222 0%, #8B0000 100%)" }}
           >
-            {publishBusy ? "發布中…" : "③ 發布到今日特價頁（主按鈕）"}
+            {publishBusy ? "釋出中…" : "③ 釋出限量折價券（主按鈕）"}
           </button>
           <button
             type="button"
@@ -423,9 +488,12 @@ export function CopilotApp() {
             className="rounded-2xl bg-white p-4 shadow-sm"
             style={{ border: "1px solid var(--wj-line)" }}
           >
-            <h2 className="text-sm font-semibold text-[#1a120f]">已發布！給客人這樣用</h2>
+            <h2 className="text-sm font-semibold text-[#1a120f]">已釋出限量折價券</h2>
+            {stockSummary && (
+              <p className="mt-1 text-[13px] font-medium text-[#8B0000]">{stockSummary}</p>
+            )}
             <p className="mt-1 text-[12px] leading-relaxed text-[#6b5348]">
-              請把連結或 QR 給客人／貼在店裡。朋友之間互相轉傳也完全免費。
+              把下面連結／QR 給客人領券。客人到店後，你到「掃碼核銷」掃他們的券。
             </p>
             {qrUrl && (
               <div className="mt-3 flex justify-center">
@@ -442,7 +510,7 @@ export function CopilotApp() {
                 onClick={copyShareUrl}
                 className="rounded-xl bg-[#8B0000] py-3 text-xs font-bold text-white"
               >
-                複製特價連結
+                複製今日頁連結
               </button>
               <a
                 href={shareUrl || "/today"}
@@ -450,14 +518,21 @@ export function CopilotApp() {
                 rel="noopener noreferrer"
                 className="rounded-xl border border-[#eadcd4] py-3 text-center text-xs font-semibold"
               >
-                打開客人頁面
+                打開客人頁
               </a>
             </div>
+            <a
+              href={scanUrl || "/scan"}
+              className="mt-2 block rounded-xl py-3 text-center text-sm font-bold text-white"
+              style={{ background: "linear-gradient(180deg, #1f7a4c, #14603a)" }}
+            >
+              前往店長掃碼核銷
+            </a>
             {canonicalUrl && (
               <p className="mt-2 text-[11px] text-[#6b5348]">
-                固定入口（有發布才看得到最新）：{" "}
-                <a className="font-medium text-[#8B0000]" href={canonicalUrl}>
-                  {canonicalUrl}
+                驗證步驟：{" "}
+                <a className="font-medium text-[#8B0000]" href="/verify">
+                  /verify
                 </a>
               </p>
             )}

@@ -1,42 +1,43 @@
-# 翁記麻辣鍋板橋店｜今日惜食特價（免費網頁版）
+# 翁記麻辣鍋板橋店｜今日惜食特價（限量折價券）
 
-**不用 LINE。** 店長發布特價 → 出現在公開網頁 → 客人開連結／掃 QR／轉傳給朋友。
+**不用 LINE。** 店長設定今日剩幾份 → 客人領折價券 → 店長掃碼核銷扣庫存。
 
-- **商家後台：** https://wengji-banqiao-copilot.vercel.app  
-- **客人今日頁：** https://wengji-banqiao-copilot.vercel.app/today  
-- **Repo：** https://github.com/changyuan123/wengji-banqiao-copilot  
+- **商家後台：** https://wengji-banqiao-copilot.vercel.app
+- **客人今日頁：** https://wengji-banqiao-copilot.vercel.app/today
+- **店長掃碼核銷：** https://wengji-banqiao-copilot.vercel.app/scan
+- **驗證流程說明（給非工程背景）：** https://wengji-banqiao-copilot.vercel.app/verify
+- **Repo：** https://github.com/changyuan123/wengji-banqiao-copilot
 
 ## 怎麼用（白話）
 
-1. 店長打開商家後台，點今天要特價的菜  
-2. 按「發布到今日特價頁」  
-3. 複製連結或把 QR 給客人／貼店裡  
-4. 客人打開就能看，還能轉傳（免費）  
+1. 店長打開商家後台，選菜並設定「剩幾份」（例如雪花牛 3 份）
+2. 按「釋出限量折價券」
+3. 客人打開今日頁，按「領取折價券」，得到專屬 QR／6 碼
+4. 到店出示；店長打開掃碼頁掃描（或手打 6 碼）→ 核銷成功，份數減少
 
 ## 雲端優先
 
 服務在 **GitHub + Vercel**，不依賴店內電腦。  
 禁止在約 8GB 文書機本機跑 `npm install` / `dev` / `build`。
 
-## 可選：讓「/today」跨伺服器也記得最新一筆
+## 可選：雲端資料庫（Upstash Redis）
 
-分享連結 `/today/s/...` **本身已含資料，永遠可開**（不需資料庫）。  
-
-若希望固定網址 `/today` 在冷啟動後仍顯示最新，可免費申請 [Upstash Redis](https://upstash.com/) 並在 Vercel 填：
+讓庫存／核銷記錄在 Vercel 多台伺服器之間都一致。免費申請 [Upstash Redis](https://upstash.com/) 後，在 Vercel 填：
 
 ```
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
+MERCHANT_PIN=5919
+NEXT_PUBLIC_SITE_URL=https://wengji-banqiao-copilot.vercel.app
 ```
 
-不填也能用：請用發布後產生的專屬連結／QR。
+不填也能先在示範環境走完流程；正式長期營業建議填上。
 
 ## 其他環境變數
 
 | 變數 | 說明 |
 |------|------|
 | `NEXT_PUBLIC_SITE_URL` | 正式網域（產生完整分享連結） |
-| `GROQ_API_KEY` 等 | 可選；點菜單發布多走固定模板 |
+| `MERCHANT_PIN` | 店長核銷密碼（預設 5919） |
+| `GROQ_API_KEY` 等 | 可選；文案預覽 |
 | `ECPAY_*` / `SUBSCRIPTION_SECRET` | 訂閱（可選） |
-
-LINE 相關變數已非本產品主通道，可不填。
