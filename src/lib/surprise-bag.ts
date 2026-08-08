@@ -532,7 +532,13 @@ export async function reserveBag(input: {
 
   const guest = await assertGuestMayReserve(guestId);
   const bag = await loadBag(bagId);
-  if (!bag) throw new Error("找不到這一檔驚喜袋");
+  if (!bag) {
+    throw new Error(
+      hasCloudStore()
+        ? "找不到這一檔驚喜袋，可能已下架"
+        : "找不到這一檔驚喜袋。多半是還沒接雲端資料庫，店長剛上架的資料在另一台伺服器。請店長到 Vercel 接上 Upstash Redis。",
+    );
+  }
 
   const now = Date.now();
   if (bag.salesClosed) throw new Error("這一檔已停止預約（已預約的仍可取袋）");
