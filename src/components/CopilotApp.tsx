@@ -280,8 +280,14 @@ export function CopilotApp() {
         )}
 
         {cloudStore === false && (
-          <div className="rounded-xl border border-[#f0d9a8] bg-[#fff8e8] px-3 py-2 text-[13px] text-[#6b5348]">
-            提醒：尚未接雲端記帳本（Upstash）。正式營業建議接上，預約才穩。
+          <div className="rounded-xl border border-[#f5c6c6] bg-[#fff5f5] px-3 py-3 text-[13px] leading-relaxed text-[#8B0000]">
+            <p className="font-bold">重要：還沒接雲端記帳本</p>
+            <p className="mt-1 text-[#6b5348]">
+              現在上架／預約資料容易消失，手打 6 碼也常失敗。請到 Vercel →
+              Environment Variables 加上 Upstash 的
+              UPSTASH_REDIS_REST_URL 與 UPSTASH_REDIS_REST_TOKEN。取袋請掃客人
+              QR（較穩）。
+            </p>
           </div>
         )}
 

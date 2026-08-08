@@ -17,13 +17,18 @@
 - 客人頁不顯示店長後台／掃碼按鈕
 - 商家方案：**NT$299／3 個月**
 
-## 雲端
+## 雲端資料庫（很重要）
 
-建議在 Vercel 設定 Upstash Redis：
+Vercel 上若**沒有**填 Upstash Redis，上架／預約資料會在不同伺服器間遺失，手打 6 碼也會失敗。
+
+請到 [Upstash](https://upstash.com/) 免費建立 Redis，在 Vercel Environment Variables 填：
 
 ```
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
 MERCHANT_PIN=5919
 NEXT_PUBLIC_SITE_URL=https://wengji-banqiao-copilot.vercel.app
+SUBSCRIPTION_SECRET=改成一串很長的亂碼
 ```
+
+取袋請**優先掃客人 QR**（QR 內含簽名票券，即使伺服器短暫忘記也能辨識）。

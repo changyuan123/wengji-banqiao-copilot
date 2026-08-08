@@ -35,6 +35,7 @@ function getGuestId(): string {
 export function TodayGuestBoard() {
   const router = useRouter();
   const [bags, setBags] = useState<PublicBag[]>([]);
+  const [cloudStore, setCloudStore] = useState<boolean | null>(null);
   const [platformBlurb, setPlatformBlurb] = useState("今晚惜食驚喜袋貨架");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -50,9 +51,11 @@ export function TodayGuestBoard() {
       .then(
         (d: {
           bags?: PublicBag[];
+          cloudStore?: boolean;
           platform?: { blurb?: string };
         }) => {
           setBags(d.bags ?? []);
+          setCloudStore(!!d.cloudStore);
           if (d.platform?.blurb) setPlatformBlurb(d.platform.blurb);
         },
       )
@@ -61,11 +64,7 @@ export function TodayGuestBoard() {
 
   async function reserve(bagId: string) {
     const c = contact.trim();
-    if (c.length < 8) {
-      setToast("請先留下手機或 LINE（至少 8 個字），方便店家聯絡");
-      return;
-    }
-    window.localStorage.setItem("wj_guest_contact", c);
+    if (c) window.localStorage.setItem("wj_guest_contact", c);
     setBusyId(bagId);
     setToast(null);
     try {
@@ -75,13 +74,20 @@ export function TodayGuestBoard() {
         body: JSON.stringify({
           guestId: getGuestId(),
           bagId,
-          contact: c,
+          contact: c || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "預約失敗");
-      if (data.reservation?.id) {
-        router.push(`/bag/${data.reservation.id}`);
+      const ticket = data.reservation?.ticket as string | undefined;
+      const id = data.reservation?.id as string | undefined;
+      if (ticket) {
+        if (id) window.localStorage.setItem(`wj_bag_ticket_${id}`, ticket);
+        router.push(`/bag/ticket?t=${encodeURIComponent(ticket)}`);
+        return;
+      }
+      if (id) {
+        router.push(`/bag/${id}`);
         return;
       }
       setToast("預約成功");
@@ -92,7 +98,10 @@ export function TodayGuestBoard() {
       setPickingId(null);
       fetch("/api/bags")
         .then((r) => r.json())
-        .then((d: { bags?: PublicBag[] }) => setBags(d.bags ?? []))
+        .then((d: { bags?: PublicBag[]; cloudStore?: boolean }) => {
+          setBags(d.bags ?? []);
+          if (typeof d.cloudStore === "boolean") setCloudStore(d.cloudStore);
+        })
         .catch(() => undefined);
     }
   }
@@ -102,6 +111,13 @@ export function TodayGuestBoard() {
 
   return (
     <div className="flex flex-col gap-4">
+      {cloudStore === false && (
+        <div className="rounded-xl border border-[#f0d9a8] bg-[#fff8e8] px-3 py-2 text-[13px] leading-relaxed text-[#6b5348]">
+          提醒：網站還沒接雲端記帳本時，貨架資料有時會突然不見。店長請盡快在
+          Vercel 接上 Upstash Redis。取袋請掃 QR（較穩）。
+        </div>
+      )}
+
       <section
         className="rounded-2xl bg-white p-4 shadow-sm"
         style={{ border: "1px solid var(--wj-line)" }}
@@ -111,15 +127,15 @@ export function TodayGuestBoard() {
         </p>
         <h2 className="mt-1 text-lg font-bold text-[#1a120f]">{platformBlurb}</h2>
         <p className="mt-2 text-[13px] text-[#6b5348]">
-          先填聯絡方式，再選要預約的袋子。到店取袋並付款；內容保留驚喜。
+          選袋子預約 → 到店給店長掃 QR 取袋並付款。電話無法驗證真假，故不強制填寫。
         </p>
         <label className="mt-3 block text-[12px] font-semibold text-[#6b5348]">
-          你的聯絡方式（手機或 LINE）
+          聯絡方式（選填，無法驗證是否為本人）
           <input
             value={contact}
             onChange={(e) => setContact(e.target.value)}
             className="mt-1 w-full rounded-xl border border-[#eadcd4] px-3 py-3 text-[16px]"
-            placeholder="例如 09xxxxxxxx 或 LINE ID"
+            placeholder="可不填；或留手機／LINE 方便店家聯繫"
             autoComplete="tel"
           />
         </label>
@@ -131,7 +147,9 @@ export function TodayGuestBoard() {
           style={{ border: "1px solid var(--wj-line)" }}
         >
           <h2 className="text-base font-semibold">目前還沒有今晚驚喜袋</h2>
-          <p className="mt-2 text-sm text-[#6b5348]">請稍後再看，或問店家是否已上架。</p>
+          <p className="mt-2 text-sm text-[#6b5348]">
+            請等店長上架。若店長剛上架卻看不到，多半是還沒接雲端資料庫。
+          </p>
         </section>
       )}
 
@@ -152,14 +170,11 @@ export function TodayGuestBoard() {
             取餐 {bag.pickupStart}–{bag.pickupEnd}
           </p>
           <p className="mt-1 text-[12px] text-[#6b5348]">
-            還可預約 {bag.remaining}／共 {bag.qty} 袋 · {bag.salesStopAt} 停止預約
+            還可預約 {bag.remaining}／共 {bag.qty} 袋
           </p>
 
           {pickingId === bag.id ? (
             <div className="mt-4 space-y-2">
-              <p className="text-[13px] text-[#6b5348]">
-                將使用聯絡方式：<strong>{contact.trim() || "（尚未填寫）"}</strong>
-              </p>
               <button
                 type="button"
                 disabled={busyId === bag.id}

@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import { getItemsByIds, type MenuItem } from "@/lib/menu";
+import { signBagTicket, verifyBagTicket, type SignedBagTicket } from "@/lib/bag-ticket";
 
 /** 店長後台清楚記錄的袋內品項（資料庫用；客人不看細項） */
 export type BagContentItem = {
@@ -38,8 +39,8 @@ export type BagReservation = {
   shortCode: string;
   bagId: string;
   guestId: string;
-  /** 客人聯絡方式（電話或 LINE） */
-  contact: string;
+  /** 可選聯絡方式（無法驗證真假，不強制） */
+  contact?: string;
   status: "reserved" | "picked_up" | "expired";
   price: number;
   publicTitle: string;
@@ -49,6 +50,8 @@ export type BagReservation = {
   storeName: string;
   reservedAt: string;
   pickedUpAt?: string;
+  /** 簽名票券（寫進 QR，跨伺服器也能取袋） */
+  ticket?: string;
 };
 
 type GuestGuard = {
@@ -72,6 +75,7 @@ type MemoryStore = {
   reservations: Map<string, BagReservation>;
   codes: Map<string, string>;
   guests: Map<string, GuestGuard>;
+  picked: Set<string>;
 };
 
 const g = globalThis as unknown as { __wengjiBagMem?: MemoryStore };
@@ -84,8 +88,10 @@ function mem(): MemoryStore {
       reservations: new Map(),
       codes: new Map(),
       guests: new Map(),
+      picked: new Set(),
     };
   }
+  if (!g.__wengjiBagMem.picked) g.__wengjiBagMem.picked = new Set();
   return g.__wengjiBagMem;
 }
 
@@ -172,10 +178,10 @@ export function normalizeGuestId(raw: unknown): string | null {
   return id;
 }
 
-export function normalizeContact(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
+export function normalizeContact(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
   const c = raw.trim().replace(/\s+/g, " ").slice(0, 40);
-  if (c.length < 8) return null;
+  if (c.length < 4) return undefined;
   return c;
 }
 
@@ -514,15 +520,12 @@ async function assertGuestMayReserve(guestId: string): Promise<GuestGuard> {
 export async function reserveBag(input: {
   guestId: unknown;
   bagId: unknown;
-  contact: unknown;
+  contact?: unknown;
 }): Promise<BagReservation> {
   const guestId = normalizeGuestId(input.guestId);
   if (!guestId) throw new Error("請重新整理頁面後再預約一次");
 
   const contact = normalizeContact(input.contact);
-  if (!contact) {
-    throw new Error("請留下可聯絡方式（手機或 LINE，至少 8 個字）");
-  }
 
   const bagId = typeof input.bagId === "string" ? input.bagId.trim() : "";
   if (!bagId) throw new Error("請選擇要預約的驚喜袋");
@@ -554,9 +557,27 @@ export async function reserveBag(input: {
   }
   await saveBag(bag);
 
+  const id = newId("bres");
+  const shortCode = newShortCode();
+  const expSec = Math.floor(new Date(bag.expiresAt).getTime() / 1000);
+  const ticketPayload: SignedBagTicket = {
+    v: 1,
+    id,
+    code: shortCode,
+    bagId: bag.id,
+    price: bag.price,
+    title: bag.publicTitle,
+    hint: bag.publicHint,
+    store: bag.storeName,
+    pickupStart: bag.pickupStart,
+    pickupEnd: bag.pickupEnd,
+    exp: expSec,
+  };
+  const ticket = signBagTicket(ticketPayload);
+
   const reservation: BagReservation = {
-    id: newId("bres"),
-    shortCode: newShortCode(),
+    id,
+    shortCode,
     bagId: bag.id,
     guestId,
     contact,
@@ -568,15 +589,99 @@ export async function reserveBag(input: {
     pickupEnd: bag.pickupEnd,
     storeName: bag.storeName,
     reservedAt: new Date().toISOString(),
+    ticket,
   };
   await saveReservation(reservation);
 
   guest.dailyReserves += 1;
   guest.openReservationId = reservation.id;
-  guest.lastContact = contact;
+  if (contact) guest.lastContact = contact;
   await saveGuest(guest);
 
   return reservation;
+}
+
+async function assertNotAlreadyPicked(reservationId: string): Promise<void> {
+  if (mem().picked.has(reservationId)) {
+    throw new Error("這袋已經取過了");
+  }
+  if (hasCloudStore()) {
+    const lock = await redisCommand([
+      "SET",
+      `wengji:bagpicked:${reservationId}`,
+      "1",
+      "NX",
+    ]);
+    if (lock !== "OK") throw new Error("這袋已經取過了");
+  }
+  mem().picked.add(reservationId);
+}
+
+/**
+ * 用簽名票券取袋（掃 QR 主路徑；不依賴 Redis 也能辨識）
+ */
+export async function pickupWithTicket(
+  token: string,
+  pin: string,
+): Promise<{
+  reservation: BagReservation;
+  remainingAfterPickup: number;
+}> {
+  if (!merchantPinOk(pin)) throw new Error("店長密碼不正確");
+
+  const ticket = verifyBagTicket(token);
+  if (!ticket) {
+    throw new Error("取袋碼無效或已過期。請重新掃描客人手機上的 QR。");
+  }
+
+  await assertNotAlreadyPicked(ticket.id);
+
+  // 若伺服器還記得預約，更新狀態；不記得也沒關係（票券本身已足夠）
+  let reservation = await loadReservation(ticket.id);
+  if (reservation) {
+    if (reservation.status === "picked_up") {
+      throw new Error("這袋已經取過了");
+    }
+    reservation.status = "picked_up";
+    reservation.pickedUpAt = new Date().toISOString();
+    await saveReservation(reservation);
+  } else {
+    reservation = {
+      id: ticket.id,
+      shortCode: ticket.code,
+      bagId: ticket.bagId,
+      guestId: "ticket",
+      status: "picked_up",
+      price: ticket.price,
+      publicTitle: ticket.title,
+      publicHint: ticket.hint,
+      pickupStart: ticket.pickupStart,
+      pickupEnd: ticket.pickupEnd,
+      storeName: ticket.store,
+      reservedAt: new Date().toISOString(),
+      pickedUpAt: new Date().toISOString(),
+      ticket: token,
+    };
+  }
+
+  const bag = await loadBag(ticket.bagId);
+  let remainingAfterPickup = 0;
+  if (bag) {
+    if (hasCloudStore()) {
+      const n = Number(
+        await redisCommand(["INCR", `wengji:bag:picked:${bag.id}`]),
+      );
+      bag.pickedUp = Number.isFinite(n)
+        ? Math.min(bag.qty, n)
+        : Math.min(bag.qty, bag.pickedUp + 1);
+    } else {
+      bag.pickedUp = Math.min(bag.qty, bag.pickedUp + 1);
+    }
+    await saveBag(bag);
+    remainingAfterPickup = Math.max(0, bag.qty - bag.pickedUp);
+  }
+
+  return { reservation, remainingAfterPickup };
 }
 
 export async function pickupReservation(
@@ -584,31 +689,63 @@ export async function pickupReservation(
   pin: string,
 ): Promise<{
   reservation: BagReservation;
-  bag: SurpriseBagOffer;
+  bag: SurpriseBagOffer | null;
   remainingAfterPickup: number;
 }> {
   if (!merchantPinOk(pin)) throw new Error("店長密碼不正確");
 
   const raw = codeOrId.trim();
+
+  // 簽名票券（QR 內容）
+  if (raw.includes(".") && raw.length > 40) {
+    const result = await pickupWithTicket(raw, pin);
+    const bag = await loadBag(result.reservation.bagId);
+    return {
+      reservation: result.reservation,
+      bag,
+      remainingAfterPickup: result.remainingAfterPickup,
+    };
+  }
+
   let reservation: BagReservation | null = null;
 
   if (/^\d{6}$/.test(raw)) {
     reservation = await loadReservationByCode(raw);
+    if (!reservation) {
+      throw new Error(
+        hasCloudStore()
+          ? "找不到這組 6 碼。請確認是客人預約頁上的號碼。"
+          : "目前沒接雲端資料庫，手打 6 碼常會失敗。請改掃客人手機上的 QR（QR 內含完整取袋資料）。",
+      );
+    }
   } else if (raw.startsWith("bres_")) {
     reservation = await loadReservation(raw);
   } else {
     reservation = await loadReservation(raw);
-    if (!reservation && /^\d+$/.test(raw) && raw.length === 6) {
-      reservation = await loadReservationByCode(raw);
-    }
   }
 
   if (!reservation) {
-    throw new Error("找不到這筆預約。請確認是客人預約頁上的 6 碼，不要填店長密碼。");
+    throw new Error(
+      "找不到這筆預約。請改掃客人 QR；或到 Vercel 接上 Upstash Redis 後再用 6 碼。",
+    );
+  }
+
+  if (reservation.ticket) {
+    const result = await pickupWithTicket(reservation.ticket, pin);
+    const bag = await loadBag(result.reservation.bagId);
+    return {
+      reservation: result.reservation,
+      bag,
+      remainingAfterPickup: result.remainingAfterPickup,
+    };
   }
 
   const bag = await loadBag(reservation.bagId);
-  if (!bag) throw new Error("對應的驚喜袋資料不見了，請稍後再試或接上雲端資料庫");
+  if (!bag) {
+    throw new Error(
+      "對應驚喜袋資料不見了。請改掃客人 QR（較穩定），並建議接上 Redis。",
+    );
+  }
 
   if (Date.now() > new Date(bag.expiresAt).getTime()) {
     if (reservation.status === "reserved") {
@@ -621,19 +758,8 @@ export async function pickupReservation(
   if (reservation.status === "picked_up") {
     throw new Error("這袋已經取過了");
   }
-  if (reservation.status === "expired") {
-    throw new Error("這筆預約已過期");
-  }
 
-  if (hasCloudStore()) {
-    const lock = await redisCommand([
-      "SET",
-      `wengji:bagpicked:${reservation.id}`,
-      "1",
-      "NX",
-    ]);
-    if (lock !== "OK") throw new Error("這袋已經取過了");
-  }
+  await assertNotAlreadyPicked(reservation.id);
 
   reservation.status = "picked_up";
   reservation.pickedUpAt = new Date().toISOString();
@@ -666,14 +792,30 @@ export async function pickupReservation(
 
 export function extractBagRef(raw: string): string | null {
   const text = raw.trim();
+  // 完整簽名票券
+  if (text.includes(".") && text.length > 40 && !text.includes("://")) {
+    return text;
+  }
   if (/^\d{6}$/.test(text)) return text;
   try {
     const u = new URL(text);
+    const t = u.searchParams.get("t");
+    if (t) return t;
     const parts = u.pathname.split("/").filter(Boolean);
     const idx = parts.indexOf("bag");
-    if (idx >= 0 && parts[idx + 1]) return parts[idx + 1];
+    if (idx >= 0 && parts[idx + 1] && parts[idx + 1] !== "ticket") {
+      return parts[idx + 1];
+    }
   } catch {
     /* not url */
+  }
+  const mTicket = text.match(/[?&]t=([^&]+)/);
+  if (mTicket?.[1]) {
+    try {
+      return decodeURIComponent(mTicket[1]);
+    } catch {
+      return mTicket[1];
+    }
   }
   const m = text.match(/bag\/([a-zA-Z0-9_]+)/);
   if (m?.[1]) return m[1];

@@ -380,9 +380,9 @@ export function ScanRedeemApp() {
           className="rounded-2xl bg-white p-4 shadow-sm"
           style={{ border: "1px solid var(--wj-line)" }}
         >
-          <h2 className="text-base font-bold">② 手打客人的 6 碼預約號</h2>
+          <h2 className="text-base font-bold">② 手打 6 碼（備援）</h2>
           <p className="mt-1 text-[12px] text-[#6b5348]">
-            請打客人預約頁上的 6 碼，不是店長密碼。
+            請優先掃客人 QR。沒接雲端資料庫時，手打 6 碼常常會失敗。
           </p>
           <input
             value={manual}
@@ -442,14 +442,29 @@ export function ScanRedeemApp() {
 
 function extractPickupRef(raw: string): string | null {
   const text = raw.trim();
+  if (text.includes(".") && text.length > 40 && !text.includes("://")) {
+    return text;
+  }
   if (/^\d{6}$/.test(text)) return text;
   try {
     const u = new URL(text);
+    const t = u.searchParams.get("t");
+    if (t) return decodeURIComponent(t);
     const parts = u.pathname.split("/").filter(Boolean);
     const idx = parts.indexOf("bag");
-    if (idx >= 0 && parts[idx + 1]) return parts[idx + 1];
+    if (idx >= 0 && parts[idx + 1] && parts[idx + 1] !== "ticket") {
+      return parts[idx + 1];
+    }
   } catch {
     /* not url */
+  }
+  const mTicket = text.match(/[?&]t=([^&#]+)/);
+  if (mTicket?.[1]) {
+    try {
+      return decodeURIComponent(mTicket[1]);
+    } catch {
+      return mTicket[1];
+    }
   }
   const m = text.match(/bag\/([a-zA-Z0-9_]+)/);
   if (m?.[1]) return m[1];

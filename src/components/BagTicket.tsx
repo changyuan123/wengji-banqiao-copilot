@@ -16,23 +16,67 @@ type Reservation = {
   contact?: string;
   reservedAt: string;
   pickedUpAt?: string;
+  ticket?: string;
 };
 
-export function BagTicket({ reservationId }: { reservationId: string }) {
+export function BagTicket({
+  reservationId,
+  ticketToken,
+}: {
+  reservationId?: string;
+  ticketToken?: string;
+}) {
   const [reservation, setReservation] = useState<Reservation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ticketUrl, setTicketUrl] = useState("");
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const t =
+      ticketToken ||
+      params.get("t") ||
+      window.localStorage.getItem(`wj_bag_ticket_${reservationId || ""}`) ||
+      "";
+
+    if (t) {
+      const url = `${window.location.origin}/bag/ticket?t=${encodeURIComponent(t)}`;
+      setTicketUrl(url);
+      window.localStorage.setItem(`wj_bag_ticket_${reservationId || "x"}`, t);
+      fetch(`/api/bags/ticket?t=${encodeURIComponent(t)}`)
+        .then(async (r) => {
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.error || "讀取失敗");
+          setReservation(data.reservation);
+        })
+        .catch((e) => setError(e instanceof Error ? e.message : "讀取失敗"));
+      return;
+    }
+
+    if (!reservationId) {
+      setError("缺少預約資料，請重新預約");
+      return;
+    }
+
     setTicketUrl(`${window.location.origin}/bag/${reservationId}`);
     fetch(`/api/bags/reservation?id=${encodeURIComponent(reservationId)}`)
       .then(async (r) => {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || "讀取失敗");
-        setReservation(data.reservation);
+        const resv = data.reservation as Reservation;
+        setReservation(resv);
+        if (resv.ticket) {
+          const url = `${window.location.origin}/bag/ticket?t=${encodeURIComponent(resv.ticket)}`;
+          setTicketUrl(url);
+          window.localStorage.setItem(`wj_bag_ticket_${reservationId}`, resv.ticket);
+        }
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "讀取失敗"));
-  }, [reservationId]);
+      .catch((e) =>
+        setError(
+          (e instanceof Error ? e.message : "讀取失敗") +
+            "（若剛預約就失敗，多半是還沒接雲端資料庫；請重新預約一次）",
+        ),
+      );
+  }, [reservationId, ticketToken]);
 
   if (error) {
     return (
@@ -95,11 +139,6 @@ export function BagTicket({ reservationId }: { reservationId: string }) {
           <p className="mt-3 text-[13px] font-semibold text-[#1a120f]">
             取餐時段 {reservation.pickupStart}–{reservation.pickupEnd}
           </p>
-          {reservation.contact && (
-            <p className="mt-2 text-[12px] text-[#6b5348]">
-              聯絡方式已留下（店長取袋時可核對）
-            </p>
-          )}
         </section>
 
         {reservation.status === "reserved" && qrUrl && (
@@ -109,7 +148,12 @@ export function BagTicket({ reservationId }: { reservationId: string }) {
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={qrUrl} alt="取袋 QR" className="mx-auto h-[240px] w-[240px]" />
-            <p className="mt-2 text-[13px] text-[#6b5348]">到店請給店長掃描這張 QR</p>
+            <p className="mt-2 text-[13px] font-semibold text-[#1f7a4c]">
+              請給店長掃描這張 QR（內含完整取袋資料）
+            </p>
+            <p className="mt-1 text-[12px] text-[#6b5348]">
+              掃這個才穩。單靠手打 6 碼在沒接資料庫時容易失敗。
+            </p>
           </section>
         )}
 
@@ -117,7 +161,7 @@ export function BagTicket({ reservationId }: { reservationId: string }) {
           className="rounded-2xl bg-white p-4 text-center shadow-sm"
           style={{ border: "1px solid var(--wj-line)" }}
         >
-          <p className="text-[12px] text-[#6b5348]">6 碼預約號（相機壞了可給店長手打）</p>
+          <p className="text-[12px] text-[#6b5348]">參考用 6 碼（建議仍以掃 QR 為主）</p>
           <p className="mt-1 font-mono text-[28px] font-bold tracking-[0.25em] text-[#1a120f]">
             {reservation.shortCode}
           </p>
@@ -125,18 +169,12 @@ export function BagTicket({ reservationId }: { reservationId: string }) {
 
         {reservation.status === "picked_up" && (
           <p className="rounded-xl bg-[#e8f5ee] px-3 py-3 text-center text-sm text-[#14603a]">
-            已於{" "}
-            {reservation.pickedUpAt
-              ? new Date(reservation.pickedUpAt).toLocaleString("zh-TW", {
-                  hour12: false,
-                })
-              : "稍早"}{" "}
-            取袋完成
+            已取袋完成
           </p>
         )}
 
         <p className="text-center text-[12px] text-[#6b5348]">
-          限今晚此時段取袋 · 一筆預約一袋 · 內容保留驚喜、以現場為準
+          限今晚此時段取袋 · 一筆預約一袋 · 內容保留驚喜
         </p>
 
         <Link
