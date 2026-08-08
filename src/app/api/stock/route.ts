@@ -69,5 +69,5 @@ function cloudHint(ok: boolean) {
   if (ok) {
     return "已釋出限量份數。客人可領券，店長可掃碼核銷。";
   }
-  return "已釋出限量份數（示範模式：未接雲端資料庫時，伺服器重啟後記錄可能消失）。建議之後接上 Upstash Redis。";
+  return "已釋出限量份數（示範模式）。還沒接雲端記帳本時，過一陣子可能找不到記錄。正式使用請在 Vercel 接上 Upstash Redis。";
 }

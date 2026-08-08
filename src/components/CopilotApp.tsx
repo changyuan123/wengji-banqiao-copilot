@@ -29,6 +29,7 @@ export function CopilotApp() {
   const [scanUrl, setScanUrl] = useState<string | null>(null);
   const [qtyById, setQtyById] = useState<Record<string, number>>({});
   const [stockSummary, setStockSummary] = useState<string | null>(null);
+  const [cloudStore, setCloudStore] = useState<boolean | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -73,6 +74,11 @@ export function CopilotApp() {
       .then((r) => r.json())
       .then((d: { subscribed?: boolean }) => setSubscribed(!!d.subscribed))
       .catch(() => undefined);
+
+    fetch("/api/stock")
+      .then((r) => r.json())
+      .then((d: { cloudStore?: boolean }) => setCloudStore(!!d.cloudStore))
+      .catch(() => setCloudStore(false));
 
     const params = new URLSearchParams(window.location.search);
     if (params.get("paid") === "1") {
@@ -186,12 +192,14 @@ export function CopilotApp() {
         qrUrl?: string;
         scanUrl?: string;
         message?: string;
+        cloudStore?: boolean;
         deal?: {
           lines?: { name: string; qty: number }[];
           totals?: { qty: number };
         };
       };
       if (!res.ok) throw new Error(data.error || "發布失敗");
+      if (typeof data.cloudStore === "boolean") setCloudStore(data.cloudStore);
       setShareUrl(data.guestUrl || "/today");
       setQrUrl(data.qrUrl || null);
       setCanonicalUrl(data.guestUrl || "/today");
@@ -324,6 +332,15 @@ export function CopilotApp() {
           </div>
         )}
 
+        {cloudStore === false && (
+          <div
+            className="rounded-xl border border-[#f0d9a8] bg-[#fff8e8] px-3 py-2 text-[13px] leading-relaxed text-[#6b5348]"
+            role="status"
+          >
+            提醒：還沒接上雲端記帳本（Upstash）。現在可以試流程，但過一陣子或換一支手機再看，有時會找不到剛剛釋出的份數。正式給客人用前，請在 Vercel 填上 Redis。
+          </div>
+        )}
+
         <section
           className="rounded-2xl bg-white px-4 py-3 shadow-sm"
           style={{ border: "1px solid var(--wj-line)" }}
@@ -344,7 +361,7 @@ export function CopilotApp() {
             <div>
               <h2 className="text-sm font-semibold text-[#1a120f]">① 點選品項並設定份數</h2>
               <p className="mt-0.5 text-[11px] text-[#6b5348]">
-                例如雪花牛剩 3 份就填 3 · 已選 {selectedIds.length}
+                可一次選多種菜（雪花牛、水蓮、蝦餃都行）· 已選 {selectedIds.length}
               </p>
             </div>
             {selectedIds.length > 0 && (
